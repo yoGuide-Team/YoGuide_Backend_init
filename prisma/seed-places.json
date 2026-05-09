@@ -1,0 +1,645 @@
+[
+  {
+    "id": "five-volcanoes",
+    "name": "Five Volcanoes Boutique Hotel",
+    "tagline": "Four-star lodge · Kinigi gateway",
+    "kind": "hotel",
+    "latitude": -1.4362,
+    "longitude": 29.5538,
+    "address": "Kinigi, Volcanoes National Park gateway",
+    "phone": "+250 788 310 450",
+    "hours": "Reception · 24/7",
+    "rating": 4.6,
+    "priceLabel": "$$$ · from USD 180",
+    "images": [
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/cofee.jpg"
+    ],
+    "tags": [
+      "Pool",
+      "Spa",
+      "Gorilla-trek pickup",
+      "Restaurant",
+      "Free parking"
+    ],
+    "about": "Tucked at the foot of the Virunga volcanoes, Five Volcanoes is the closest boutique option to the Kinigi park gate. Expect early-morning trek shuttles, log-fired lounges, and a chef that leans hard into Rwandan-European fusion.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "chateau-marara",
+    "name": "Château Marara Resort",
+    "tagline": "Lake-front villa resort · Burera",
+    "kind": "hotel",
+    "latitude": -1.4287,
+    "longitude": 29.7741,
+    "address": "Lake Burera peninsula, Butaro road",
+    "phone": "+250 788 610 300",
+    "hours": "Reception · 24/7",
+    "rating": 4.7,
+    "priceLabel": "$$$$ · from USD 240",
+    "images": [
+      "assets/images/chateau_marara.jpg",
+      "assets/images/twin_lakes.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/cofee.jpg"
+    ],
+    "tags": [
+      "Lake view",
+      "Kayaks",
+      "Private jetty",
+      "Spa",
+      "Fine dining"
+    ],
+    "about": "A quiet lakeside retreat on the Burera peninsula — think private cottages, a wood-fire sauna floating on the water, and some of the best sunset paddles in the Northern Province.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "best-view",
+    "name": "Best View Hotel",
+    "tagline": "Central Musanze · panoramic rooftop",
+    "kind": "hotel",
+    "latitude": -1.4967,
+    "longitude": 29.6371,
+    "address": "Nyarugenge Avenue, central Musanze",
+    "phone": "+250 788 200 410",
+    "hours": "Reception · 24/7",
+    "rating": 4.3,
+    "priceLabel": "$$ · from USD 85",
+    "images": [
+      "assets/images/best_view_hotel.jpg",
+      "assets/images/musanze_ad.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/kiga.jpg",
+      "assets/images/convention.jpg"
+    ],
+    "tags": [
+      "Rooftop bar",
+      "WiFi",
+      "Breakfast included",
+      "Airport shuttle"
+    ],
+    "about": "A solid mid-range pick steps from Goico Plaza. The rooftop bar looks straight at Mt. Bisoke and stays open until 11 pm.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "muhabura-hotel",
+    "name": "Muhabura Hotel",
+    "tagline": "Heritage stay · Dian Fossey era",
+    "kind": "hotel",
+    "latitude": -1.4997,
+    "longitude": 29.633,
+    "address": "Ave du 5 Juillet, Musanze",
+    "phone": "+250 788 530 120",
+    "hours": "Reception · 24/7",
+    "rating": 4.1,
+    "priceLabel": "$$ · from USD 70",
+    "images": [
+      "assets/images/musanze_gorilla_intro.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/basket.jpg",
+      "assets/images/cofee.jpg"
+    ],
+    "tags": [
+      "Garden",
+      "Restaurant",
+      "Fossey memorabilia",
+      "Conference hall"
+    ],
+    "about": "One of the oldest hotels in Musanze — Dian Fossey famously called it home between treks. Big gardens, country-house feel, hearty table.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "virunga-inn",
+    "name": "Virunga Inn Resort & Spa",
+    "tagline": "Hillside cottages · spa garden",
+    "kind": "hotel",
+    "latitude": -1.4812,
+    "longitude": 29.6398,
+    "address": "Off KN-3 road, Cyuve sector",
+    "phone": "+250 788 910 220",
+    "hours": "Reception · 24/7",
+    "rating": 4.5,
+    "priceLabel": "$$$ · from USD 160",
+    "images": [
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/cofee.jpg"
+    ],
+    "tags": [
+      "Spa",
+      "Yoga deck",
+      "Farm-to-table",
+      "Trek transfers"
+    ],
+    "about": "Cottage-style resort on a quiet hillside outside town. Ten minutes from Musanze centre, twenty from Kinigi, with one of the better breakfasts in the region.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "la-paillotte",
+    "name": "La Paillotte Gorilla Place",
+    "tagline": "Pizza, grills & gallery",
+    "kind": "restaurant",
+    "latitude": -1.4989,
+    "longitude": 29.6356,
+    "address": "Ruhengeri town centre",
+    "phone": "+250 788 441 212",
+    "hours": "Daily · 11:00 am – 11:00 pm",
+    "rating": 4.5,
+    "priceLabel": "$$ · RWF 5 000 – 15 000",
+    "images": [
+      "assets/images/musanze_ad.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/convention.jpg"
+    ],
+    "tags": [
+      "Pizza",
+      "Wood-fired",
+      "Vegetarian",
+      "Craft beer",
+      "Wi-Fi"
+    ],
+    "about": "A Musanze institution — wood-fired pizza, cold Mutzig, and a crafts courtyard to wander between courses. Our directory has its full tenant map if you want to find the gallery or the tour desk.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "volcana-lounge",
+    "name": "Volcana Lounge",
+    "tagline": "Grill & sports lounge",
+    "kind": "restaurant",
+    "latitude": -1.4976,
+    "longitude": 29.6377,
+    "address": "Volcanoes Park access road",
+    "phone": "+250 788 600 310",
+    "hours": "Daily · 11:00 am – midnight",
+    "rating": 4.2,
+    "priceLabel": "$$ · RWF 4 500 – 12 000",
+    "images": [
+      "assets/images/cofee.jpg",
+      "assets/images/musanze_gorilla_intro.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/kiga.jpg",
+      "assets/images/basket.jpg"
+    ],
+    "tags": [
+      "Live sports",
+      "Brochettes",
+      "Shisha",
+      "Outdoor seating"
+    ],
+    "about": "Reliable grill + sports lounge. Big screens during Premier League weekends, brochette plates the size of small countries.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "kivu-rooftop",
+    "name": "Kivu Rooftop Grill",
+    "tagline": "Rooftop dining · Goico Floor 1",
+    "kind": "restaurant",
+    "latitude": -1.4988,
+    "longitude": 29.634,
+    "address": "Goico Plaza · Floor 1",
+    "phone": "+250 788 661 202",
+    "hours": "Daily · 11:00 am – 11:00 pm",
+    "rating": 4.4,
+    "priceLabel": "$$$ · RWF 8 000 – 22 000",
+    "images": [
+      "assets/images/convention.jpg",
+      "assets/images/kiga.jpg",
+      "assets/images/musanze_ad.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/arts.jpg"
+    ],
+    "tags": [
+      "Rooftop",
+      "Tilapia",
+      "Cocktails",
+      "Private booths"
+    ],
+    "about": "Open-air grill on top of Goico Plaza with views across the market square. Known for whole-grilled tilapia and a shortlist of house cocktails.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "ikaze-restaurant",
+    "name": "Ikaze Restaurant & Bar",
+    "tagline": "All-day café · Goico Ground",
+    "kind": "restaurant",
+    "latitude": -1.4989,
+    "longitude": 29.6338,
+    "address": "Goico Plaza · Ground Floor",
+    "phone": "+250 788 661 305",
+    "hours": "Daily · 7:00 am – 11:00 pm",
+    "rating": 4.1,
+    "priceLabel": "$ · RWF 2 500 – 7 500",
+    "images": [
+      "assets/images/cofee.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/arts.jpg",
+      "assets/images/convention.jpg"
+    ],
+    "tags": [
+      "Breakfast",
+      "Coffee",
+      "Wi-Fi",
+      "Workspace friendly"
+    ],
+    "about": "Where Musanze locals take their morning coffee — fast wifi, pastries warm by 7, and the mini alimentation next door for snacks.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "goico-plaza",
+    "name": "Goico Plaza",
+    "tagline": "Gorilla Investment Co. · 5 levels",
+    "kind": "mall",
+    "latitude": -1.4988,
+    "longitude": 29.6339,
+    "address": "Central Musanze",
+    "phone": "+250 788 103 535",
+    "hours": "Mon – Sat · 7:30 am – 9:00 pm",
+    "rating": 4.4,
+    "priceLabel": "5 floors · 35+ tenants",
+    "images": [
+      "assets/images/convention.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/musanze_ad.jpg"
+    ],
+    "tags": [
+      "Banks",
+      "Restaurants",
+      "Pharmacies",
+      "Tailors",
+      "Agaconco"
+    ],
+    "about": "The modern plaza at the heart of Musanze — basement hardware and pharmacies, ground-floor banking hall (BK, BPR, KCB, Letshego, Bank of Africa), Agaconco wholesale on Floor 1, and Caguwa thrift market with tailors on the top floor. Tap \"Open directory\" for the full floor plan and turn-by-turn walking directions.",
+    "venueRef": "goico",
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "muhabura-bc",
+    "name": "Muhabura Business Centre",
+    "tagline": "Tour offices · café · pharmacy",
+    "kind": "mall",
+    "latitude": -1.4982,
+    "longitude": 29.6349,
+    "address": "Central Musanze",
+    "phone": "+250 788 530 800",
+    "hours": "Mon – Sat · 7:30 am – 7:00 pm",
+    "rating": 4.2,
+    "priceLabel": "2 floors · tour hub",
+    "images": [
+      "assets/images/musanze_ad.jpg",
+      "assets/images/kiga.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/convention.jpg"
+    ],
+    "tags": [
+      "Tour operators",
+      "Café",
+      "Pharmacy",
+      "Mobile money",
+      "WiFi"
+    ],
+    "about": "The building most gorilla travellers start their day in — tour agencies on the upper floor, café and pharmacy on ground. Full floor plan available in directory mode.",
+    "venueRef": "muhabura",
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "central-market",
+    "name": "Musanze Central Market",
+    "tagline": "Soko ya Musanze · open stalls",
+    "kind": "mall",
+    "latitude": -1.4994,
+    "longitude": 29.6327,
+    "address": "Market Square, Musanze",
+    "phone": "+250 788 300 020",
+    "hours": "Daily · 6:30 am – 6:30 pm",
+    "rating": 4.0,
+    "priceLabel": "Open-air · 200+ vendors",
+    "images": [
+      "assets/images/basket.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/cotton.jpg",
+      "assets/images/cottons.jpeg",
+      "assets/images/cofee.jpg"
+    ],
+    "tags": [
+      "Produce",
+      "Fabric",
+      "Baskets",
+      "Local eats",
+      "Cash-friendly"
+    ],
+    "about": "Musanze's heartbeat — produce hall in the middle, fabric and basket rows to the east, hot lunch counters to the west. Come early for the best imyeyo and potato stacks.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "musanze-caves",
+    "name": "Musanze Caves",
+    "tagline": "Protected lava tube system",
+    "kind": "landmark",
+    "latitude": -1.4972,
+    "longitude": 29.6415,
+    "address": "Musanze sector, 2 km east of town",
+    "phone": "+250 788 500 021",
+    "hours": "Daily · 7:00 am – 5:00 pm · last entry 4:00 pm",
+    "rating": 4.5,
+    "priceLabel": "USD 15 · RWF 5 000",
+    "images": [
+      "assets/images/musanze_caves.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/musanze_gorilla_glow.jpg"
+    ],
+    "tags": [
+      "Guided",
+      "Helmets provided",
+      "Moderate walk",
+      "Eco-park"
+    ],
+    "about": "A 2 km walkable section of a much longer lava tube — used as shelter through centuries of Rwandan history. Guided tours leave from the park gate every hour.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "volcanoes-hq",
+    "name": "Volcanoes National Park HQ",
+    "tagline": "Kinigi · gorilla trek meeting point",
+    "kind": "landmark",
+    "latitude": -1.4333,
+    "longitude": 29.5547,
+    "address": "Kinigi, Musanze District",
+    "phone": "+250 788 800 200",
+    "hours": "Daily · 5:30 am – 6:30 pm",
+    "rating": 4.8,
+    "priceLabel": "Permit USD 1 500",
+    "images": [
+      "assets/images/gorillas.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/musanze_gorilla_intro.jpg"
+    ],
+    "tags": [
+      "Gorilla treks",
+      "Briefing 7 am",
+      "Ranger-led",
+      "RDB booking"
+    ],
+    "about": "The meeting point for every mountain-gorilla trek in Rwanda. Arrive by 6:45 am for the briefing, tea, and the Intore dance warm-up.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "twin-lakes",
+    "name": "Twin Lakes Viewpoint",
+    "tagline": "Lakes Burera & Ruhondo · scenic stop",
+    "kind": "landmark",
+    "latitude": -1.431,
+    "longitude": 29.7105,
+    "address": "Butaro road, Burera District",
+    "phone": "—",
+    "hours": "Best visited · 8:00 am – 5:00 pm",
+    "rating": 4.6,
+    "priceLabel": "Free",
+    "images": [
+      "assets/images/twin_lakes.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/chateau_marara.jpg",
+      "assets/images/volcanoes_bg.jpg"
+    ],
+    "tags": [
+      "Viewpoint",
+      "Picnic spot",
+      "Kayaks nearby",
+      "Birdlife"
+    ],
+    "about": "The twin crater lakes separated by a narrow isthmus — often called the most photographed spot in the Northern Province. Sunrise is otherworldly; late afternoon gets the long shadows across the water.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "buhanga-eco",
+    "name": "Buhanga Eco-Park",
+    "tagline": "Sacred forest · Rwandan coronation site",
+    "kind": "landmark",
+    "latitude": -1.4515,
+    "longitude": 29.618,
+    "address": "Buhanga forest, Musanze District",
+    "phone": "+250 788 400 510",
+    "hours": "Daily · 8:00 am – 4:30 pm",
+    "rating": 4.3,
+    "priceLabel": "RWF 3 000",
+    "images": [
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/musanze_bg2.jpeg",
+      "assets/images/arts.jpg"
+    ],
+    "tags": [
+      "Sacred forest",
+      "Short trail",
+      "Cultural",
+      "Shaded walk"
+    ],
+    "about": "A small protected forest woven into Rwandan royal history — every Mwami of Rwanda is said to have been ritually washed here before coronation. The short trail takes about an hour.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "dian-fossey-campus",
+    "name": "Ellen DeGeneres Campus · Dian Fossey Fund",
+    "tagline": "Conservation campus · public tours",
+    "kind": "landmark",
+    "latitude": -1.4671,
+    "longitude": 29.5795,
+    "address": "Kinigi road, near the park",
+    "phone": "+250 788 300 115",
+    "hours": "Mon – Sat · 9:00 am – 4:00 pm",
+    "rating": 4.9,
+    "priceLabel": "USD 25 · tours with rangers",
+    "images": [
+      "assets/images/gorillas.jpg",
+      "assets/images/musanze_gorilla_intro.jpg",
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/volcanoes_bg.jpg"
+    ],
+    "tags": [
+      "Research",
+      "Public tours",
+      "Family friendly",
+      "Conservation"
+    ],
+    "about": "The newest chapter of the Dian Fossey Gorilla Fund — a public campus where visitors can meet the research team, see the lab, and learn how data is gathered on each gorilla family.",
+    "venueRef": null,
+    "experienceAdultUsd": 0
+  },
+  {
+    "id": "gorilla-trek",
+    "name": "Mountain Gorilla Trek",
+    "tagline": "Half-day · from Kinigi HQ",
+    "kind": "experience",
+    "latitude": -1.434,
+    "longitude": 29.5555,
+    "address": "Kinigi park gate · group meets at 7:00 am",
+    "phone": "+250 788 800 200",
+    "hours": "7:00 am briefing · 4–7 h total",
+    "rating": 4.9,
+    "priceLabel": "USD 1 500 · permit + guide",
+    "images": [
+      "assets/images/gorillas.jpg",
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/volcanoes_bg.jpg"
+    ],
+    "tags": [
+      "Group of 8",
+      "Moderate–hard hike",
+      "Porter recommended"
+    ],
+    "about": "The signature Rwandan experience. Rangers assign you to one of the habituated gorilla families at the morning briefing; trek duration ranges from two hours to most of the day.",
+    "venueRef": null,
+    "experienceAdultUsd": 1500
+  },
+  {
+    "id": "golden-monkey",
+    "name": "Golden Monkey Tracking",
+    "tagline": "Short trek · bamboo belt",
+    "kind": "experience",
+    "latitude": -1.4258,
+    "longitude": 29.5492,
+    "address": "Kinigi, north bamboo zone",
+    "phone": "+250 788 800 200",
+    "hours": "7:00 am briefing · ~3 h total",
+    "rating": 4.7,
+    "priceLabel": "USD 100",
+    "images": [
+      "assets/images/musanze_gorilla_glow.jpg",
+      "assets/images/volcanoes_bg.jpg",
+      "assets/images/musanze_gorilla_rest.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/musanze_gorilla_intro.jpg"
+    ],
+    "tags": [
+      "Shorter trek",
+      "Kid friendly",
+      "Active group"
+    ],
+    "about": "Easier on the legs than a gorilla trek and wildly photogenic — the golden monkeys are very active, so the experience is a lot of scampering through bamboo and some very good photos.",
+    "venueRef": null,
+    "experienceAdultUsd": 100
+  },
+  {
+    "id": "iby-iwacu",
+    "name": "Iby'Iwacu Cultural Village",
+    "tagline": "Community-run cultural experience",
+    "kind": "experience",
+    "latitude": -1.4601,
+    "longitude": 29.5822,
+    "address": "Nyabigoma, Musanze District",
+    "phone": "+250 788 200 880",
+    "hours": "Daily · 9:00 am – 4:00 pm",
+    "rating": 4.4,
+    "priceLabel": "USD 40 · half-day",
+    "images": [
+      "assets/images/arts.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/cotton.jpg",
+      "assets/images/cottons.jpeg",
+      "assets/images/musanze_gorilla_intro.jpg"
+    ],
+    "tags": [
+      "Dance",
+      "Crafts",
+      "Community-run",
+      "Lunch included"
+    ],
+    "about": "A cultural village run by ex-poachers-turned-conservationists. Intore dance, basket weaving, banana beer brewing, and a shared lunch at the royal hut.",
+    "venueRef": null,
+    "experienceAdultUsd": 40
+  },
+  {
+    "id": "coffee-tour",
+    "name": "Kinigi Coffee Plantation Tour",
+    "tagline": "Cooperative tour · farm to cup",
+    "kind": "experience",
+    "latitude": -1.448,
+    "longitude": 29.5831,
+    "address": "Cooperative washing station, Kinigi",
+    "phone": "+250 788 140 055",
+    "hours": "Mon – Sat · 9:00 am – 3:00 pm",
+    "rating": 4.5,
+    "priceLabel": "USD 30 · 2 h tour + tasting",
+    "images": [
+      "assets/images/cofee.jpg",
+      "assets/images/musanze_gorilla_canopy.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/cotton.jpg",
+      "assets/images/arts.jpg"
+    ],
+    "tags": [
+      "Cupping",
+      "Cooperative",
+      "Small group",
+      "Take-home beans"
+    ],
+    "about": "Walk through the fields, pick cherries, pulp and wash them at the cooperative station, then finish with a guided cupping. You leave with 250 g of the beans you just processed.",
+    "venueRef": null,
+    "experienceAdultUsd": 30
+  },
+  {
+    "id": "urwibutso-sina",
+    "name": "Urwibutso · Sina Gerard",
+    "tagline": "Nyirangarama · factory tour & marketplace",
+    "kind": "experience",
+    "latitude": -1.6585,
+    "longitude": 30.018,
+    "address": "Nyirangarama trading centre, Rulindo District",
+    "phone": "+250 788 302 011",
+    "hours": "Mon – Sat · 8:00 am – 5:30 pm",
+    "rating": 4.6,
+    "priceLabel": "Free entry · USD 15 guided tour",
+    "images": [
+      "assets/images/convention.jpg",
+      "assets/images/arts.jpg",
+      "assets/images/basket.jpg",
+      "assets/images/cofee.jpg",
+      "assets/images/cotton.jpg"
+    ],
+    "tags": [
+      "Akabanga",
+      "Urwagwa banana wine",
+      "Biscuits",
+      "Factory tour",
+      "Family-run"
+    ],
+    "about": "The legendary Rwandan entrepreneur Sina Gerard built Urwibutso from a village bakery into a household brand — Akabanga chili oil, Urwagwa banana wine, Urwibutso biscuits, juices, and baked goods. Book a guided tour of the factory and farm, or just pull over at the roadside emporium for souvenirs on your way between Musanze and Kigali.",
+    "venueRef": null,
+    "experienceAdultUsd": 15
+  }
+]

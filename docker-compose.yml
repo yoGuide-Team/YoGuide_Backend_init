@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: yoguide
+      POSTGRES_PASSWORD: yoguide
+      POSTGRES_DB: yoguide
+    volumes:
+      - yoguide-pg:/var/lib/postgresql/data
+
+volumes:
+  yoguide-pg:
