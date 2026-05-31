@@ -1,4 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -10,6 +11,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { ApiErrorResponse, AuthUserResponse } from '../common/responses';
+
 
 @ApiTags('Account')
 @ApiBearerAuth('access-token')

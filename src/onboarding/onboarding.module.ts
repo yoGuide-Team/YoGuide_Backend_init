@@ -4,8 +4,12 @@ import { ShuttleController } from './shuttle.controller';
 import { WalletController } from './wallet.controller';
 import { ProfileController } from './profile.controller';
 import { OnboardingService } from './onboarding.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
+    imports: [
+    NotificationsModule, // add this
+  ],
   controllers: [
     EsimController,
     ShuttleController,

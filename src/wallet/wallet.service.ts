@@ -1,9 +1,13 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async getOrCreateForUser(userId: string) {
     const wallet = await this.prisma.wallet.upsert({
@@ -19,42 +23,56 @@ export class WalletService {
     return this.toDto(wallet, this.filterBookingTx(transactions));
   }
 
-  async topUp(userId: string, amountCents: number, method: string) {
-    if (amountCents <= 0) {
-      throw new BadRequestException('Top-up amount must be positive.');
-    }
-    if (!['card', 'momo', 'cash'].includes(method)) {
-      throw new BadRequestException(
-        "Top-up method must be one of 'card', 'momo', or 'cash'.",
-      );
-    }
-    return this.prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.upsert({
-        where: { userId },
-        update: {},
-        create: { userId },
-      });
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          kind: 'topup',
-          amountCents,
-          currency: wallet.currency,
-          notes: `mock ${method} top-up`,
-        },
-      });
-      const updated = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { balanceCents: { increment: amountCents } },
-      });
-      const transactions = await tx.walletTransaction.findMany({
-        where: { walletId: wallet.id },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-      });
-      return this.toDto(updated, this.filterBookingTx(transactions));
-    });
+async topUp(userId: string, amountCents: number, method: string) {
+  if (amountCents <= 0) {
+    throw new BadRequestException('Top-up amount must be positive.');
   }
+
+  if (!['card', 'momo', 'cash'].includes(method)) {
+    throw new BadRequestException(
+      "Top-up method must be one of 'card', 'momo', or 'cash'.",
+    );
+  }
+
+  return this.prisma.$transaction(async (tx) => {
+    const wallet = await tx.wallet.upsert({
+      where: { userId },
+      update: {},
+      create: { userId },
+    });
+
+    await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        kind: 'topup',
+        amountCents,
+        currency: wallet.currency,
+        notes: `mock ${method} top-up`,
+      },
+    });
+
+    const updated = await tx.wallet.update({
+      where: { id: wallet.id },
+      data: { balanceCents: { increment: amountCents } },
+    });
+
+
+    // ADD THIS HERE
+await this.notifications.notifyWalletDeposit(
+  userId,
+  amountCents,
+  wallet.currency,
+);
+
+    const transactions = await tx.walletTransaction.findMany({
+      where: { walletId: wallet.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return this.toDto(updated, this.filterBookingTx(transactions));
+  });
+}
 
   /**
    * Onboarding top-up rows have kind/amountCents null (they use

@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import {
-  AdminNotificationsController,
-  NotificationsController,
-} from './notifications.controller';
-
+import { NotificationsService } from './notifications.service';
+import { NotificationsController } from './notifications.controller';
+ 
 @Module({
-  controllers: [NotificationsController, AdminNotificationsController],
+  controllers: [NotificationsController],
+  providers:   [NotificationsService],
+  exports:     [NotificationsService],   // ← so WalletModule, OnboardingModule can inject it
 })
 export class NotificationsModule {}
+ 

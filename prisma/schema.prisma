@@ -32,6 +32,7 @@ model User {
   walletTransactions WalletTransaction[]
   tripProfile    TripProfile?
   eventInterest  EventInterest?
+  notifications       Notification[]
 
   wallet       Wallet?
   bookings     Booking[]
@@ -118,6 +119,53 @@ model EventInterest {
 
   user            User     @relation(fields: [userId], references: [id])
 }
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   @default("general")
+  metadata  String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+ 
+  @@index([userId, createdAt])
+}
+ 
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Integration: wallet.service.ts  – call notifyWalletDeposit after top-up
+// ─────────────────────────────────────────────────────────────────────────────
+/*
+// In WalletService constructor inject NotificationsService:
+constructor(
+  private readonly prisma: PrismaService,
+  private readonly notificationsService: NotificationsService,
+) {}
+ 
+// Inside topup() after successful transaction:
+await this.notificationsService.notifyWalletDeposit(
+  userId, dto.amount, dto.currency ?? 'RWF');
+*/
+ 
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Integration: onboarding.service.ts / profile.controller.ts
+//  – call notifyTripProfile after POST /me/trip-profile
+// ─────────────────────────────────────────────────────────────────────────────
+/*
+// In ProfileController inject NotificationsService and call after save:
+await this.notificationsService.notifyTripProfile(
+  req.user.id,
+  dto.travelStyles ?? [],
+  dto.interests ?? []);
+ 
+// After POST /me/event-interests:
+await this.notificationsService.notifyEventInterests(
+  req.user.id, dto.interests ?? []);
+*/
 
 
 /// Database-driven role. Each role carries a list of permission strings —
@@ -436,18 +484,6 @@ model Message {
 
 /// In-app notifications. Created by admin broadcasts, system events, or
 /// booking lifecycle hooks.
-model Notification {
-  id        String    @id @default(cuid())
-  userId    String?   // null = broadcast to everyone
-  kind      String    // booking | payment | system | announcement
-  title     String
-  body      String
-  link      String?
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
-}
 
 // ═════════════════════════════════════════════════════════════════════════
 //  Commerce — vendors, products, orders
