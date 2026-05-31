@@ -6,8 +6,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  relationMode = "prisma"
 }
 
 /// Local user account. Email + bcrypt password hash + role pointer.
@@ -16,6 +18,8 @@ model User {
   email        String   @unique
   passwordHash String
   fullName     String?
+  phone          String?
+  cardNumber     String? 
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
   roleKey      String   @default("user")
@@ -23,9 +27,98 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  esimOrders     EsimOrder[]
+  shuttleBookings ShuttleBooking[]
+  walletTransactions WalletTransaction[]
+  tripProfile    TripProfile?
+  eventInterest  EventInterest?
+
   wallet       Wallet?
   bookings     Booking[]
 }
+model WalletTransaction {
+  id             String   @id @default(cuid())
+
+  // ── existing relations (keep these — Wallet and Booking reference them) ──
+  walletId       String?
+  wallet         Wallet?  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  bookingId      String?
+  booking        Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // ── new relation added for onboarding top-up flow ────────────────────────
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+
+  // ── existing fields (keep these unchanged) ───────────────────────────────
+  // Add any fields that were already on your WalletTransaction here.
+  // Based on your schema the existing model had no explicit fields shown,
+  // so the fields below are the ones needed for both old + new flows:
+  kind           String?  // charge | refund | topup
+  method         String?  // wallet | card | momo | cash
+  amountCents    Int?     // used by booking/wallet flow (integer cents)
+  currency       String   @default("USD")
+  status         String   @default("pending") // pending | settled | failed | processing
+  externalRef    String?
+  notes          String?
+
+  // ── new fields for the onboarding wallet top-up flow ─────────────────────
+  sourceAmount   Float?
+  sourceCurrency String?
+  rwfAmount      Float?
+  cardToken      String?
+
+  createdAt      DateTime @default(now())
+}
+
+
+model EsimOrder {
+  id            String   @id @default(cuid())
+  userId        String
+  bundleId      String
+  deliveryEmail String
+  status        String   @default("pending")
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id])
+}
+
+model ShuttleBooking {
+  id           String   @id @default(cuid())
+  userId       String
+  dropOffPoint String
+  slotTime     DateTime
+  status       String   @default("confirmed")
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model TripProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  destinationCity String
+  arrivalDate     DateTime?
+  departureDate   DateTime?
+  tripPurpose     String?
+  nationality     String?
+  freeSlots       String?
+  experienceTypes String[]
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id])
+}
+
+model EventInterest {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  eventIds        String[]
+  reminderEnabled Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
 
 /// Database-driven role. Each role carries a list of permission strings —
 /// the auth layer expands the user's permission set at request time, so
@@ -119,21 +212,6 @@ model BookingTransaction {
   createdAt   DateTime @default(now())
 }
 
-/// Money moves to/from a wallet — top-ups, debits to fund bookings,
-/// refunds back from cancelled bookings.
-model WalletTransaction {
-  id          String   @id @default(cuid())
-  walletId    String
-  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  kind        String   // topup | debit | refund
-  amountCents Int
-  currency    String   @default("USD")
-  bookingId   String?
-  booking     Booking? @relation(fields: [bookingId], references: [id])
-  externalRef String?
-  notes       String?
-  createdAt   DateTime @default(now())
-}
 
 // ═════════════════════════════════════════════════════════════════════════
 //  Geography & content

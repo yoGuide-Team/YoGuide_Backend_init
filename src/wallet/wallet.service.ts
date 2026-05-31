@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -17,12 +16,9 @@ export class WalletService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    return this.toDto(wallet, transactions);
+    return this.toDto(wallet, this.filterBookingTx(transactions));
   }
 
-  /// Mock top-up — records a settled wallet transaction and bumps the
-  /// balance. Replace `externalRef` plumbing with a real Flutterwave/MoMo
-  /// callback when payment processors land.
   async topUp(userId: string, amountCents: number, method: string) {
     if (amountCents <= 0) {
       throw new BadRequestException('Top-up amount must be positive.');
@@ -56,13 +52,61 @@ export class WalletService {
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
-      return this.toDto(updated, transactions);
+      return this.toDto(updated, this.filterBookingTx(transactions));
     });
   }
 
+  /**
+   * Onboarding top-up rows have kind/amountCents null (they use
+   * sourceAmount/rwfAmount instead). Filter them out before passing
+   * to toDto which expects the booking-flow shape.
+   */
+  private filterBookingTx(
+    rows: Array<{
+      id: string;
+      kind: string | null;
+      amountCents: number | null;
+      currency: string;
+      bookingId: string | null;
+      externalRef: string | null;
+      notes: string | null;
+      createdAt: Date;
+    }>,
+  ): Array<{
+    id: string;
+    kind: string;
+    amountCents: number;
+    currency: string;
+    bookingId: string | null;
+    externalRef: string | null;
+    notes: string | null;
+    createdAt: Date;
+  }> {
+    return rows.filter(
+      (t): t is typeof t & { kind: string; amountCents: number } =>
+        t.kind !== null && t.amountCents !== null,
+    );
+  }
+
   toDto(
-    w: { id: string; userId: string; balanceCents: number; currency: string; createdAt: Date; updatedAt: Date },
-    transactions: Array<{ id: string; kind: string; amountCents: number; currency: string; bookingId: string | null; externalRef: string | null; notes: string | null; createdAt: Date }>,
+    w: {
+      id: string;
+      userId: string;
+      balanceCents: number;
+      currency: string;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    transactions: Array<{
+      id: string;
+      kind: string;
+      amountCents: number;
+      currency: string;
+      bookingId: string | null;
+      externalRef: string | null;
+      notes: string | null;
+      createdAt: Date;
+    }>,
   ) {
     return {
       id: w.id,

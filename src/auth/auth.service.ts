@@ -16,7 +16,7 @@ interface JwtPayload {
 }
 
 export interface AuthSession {
-  token: string;
+  access_token: string; // ← renamed to match what Flutter reads: body['access_token']
   user: AuthenticatedUser;
 }
 
@@ -31,24 +31,34 @@ export class AuthService {
     email: string;
     password: string;
     fullName?: string;
-    roleKey?: string;
+    phone?: string;       // ← added: Flutter sends this
+    userType?: string;    // ← added: Flutter sends 'Visitor' | 'Resident' | 'Hospitality Card Holder'
+    cardNumber?: string;  // ← added: Flutter sends this for card holders
+    roleKey?: string;     // ← kept for backward compat
   }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
-    const requestedRole = input.roleKey ?? 'user';
 
-    // Anyone can register, but only as `user`. Higher roles are assigned by
-    // an admin through /admin/users — never by the user themselves.
-    const roleKey = requestedRole === 'user' ? 'user' : 'user';
+    // Map Flutter's userType strings to backend role keys.
+    // Fall back to roleKey if userType is absent (API callers).
+    const roleKey = this.resolveRoleKey(input.userType ?? input.roleKey);
+
+    // First user with roleKey='admin' becomes admin; all others get 'user'.
+    const adminAlreadyExists = await this.prisma.user.findFirst({
+      where: { roleKey: 'admin' },
+    });
+    const effectiveRole =
+      roleKey === 'admin' && !adminAlreadyExists ? 'admin' : 'user';
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new ConflictException('An account with that email already exists.');
     }
 
-    // Make sure the role exists (the seed always provides 'user').
-    const role = await this.prisma.role.findUnique({ where: { key: roleKey } });
+    const role = await this.prisma.role.findUnique({
+      where: { key: effectiveRole },
+    });
     if (!role) {
-      throw new NotFoundException(`Role '${roleKey}' is not configured.`);
+      throw new NotFoundException(`Role '${effectiveRole}' is not configured.`);
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
@@ -56,15 +66,20 @@ export class AuthService {
       data: {
         email,
         passwordHash,
-        fullName: input.fullName?.trim() || null,
-        roleKey,
+        fullName: input.fullName?.trim() ?? null,
+        phone: input.phone?.trim() ?? null,         // ← store phone
+        cardNumber: input.cardNumber?.trim() ?? null, // ← store card number
+        roleKey: effectiveRole,
       },
     });
 
     return this.buildSession(user.id);
   }
 
-  async login(input: { email: string; password: string }): Promise<AuthSession> {
+  async login(input: {
+    email: string;
+    password: string;
+  }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
@@ -77,9 +92,6 @@ export class AuthService {
     return this.buildSession(user.id);
   }
 
-  /// Verifies a JWT and re-fetches the user + role on every request so role
-  /// changes (e.g. admin demoting a user) take effect immediately, without
-  /// waiting for the JWT to expire.
   async verifyToken(token: string): Promise<AuthenticatedUser> {
     let payload: JwtPayload;
     try {
@@ -90,6 +102,25 @@ export class AuthService {
     return this.loadAuthenticatedUser(payload.sub);
   }
 
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  /**
+   * Maps Flutter userType strings → backend role keys.
+   * Visitor / Resident / Hospitality Card Holder all become 'user'.
+   * Unknown values default to 'user'.
+   */
+  private resolveRoleKey(value?: string): string {
+    if (!value) return 'user';
+    const map: Record<string, string> = {
+      Visitor: 'user',
+      Resident: 'user',
+      'Hospitality Card Holder': 'user',
+      admin: 'admin',
+      user: 'user',
+    };
+    return map[value] ?? 'user';
+  }
+
   private async buildSession(userId: string): Promise<AuthSession> {
     const user = await this.loadAuthenticatedUser(userId);
     const payload: JwtPayload = {
@@ -97,11 +128,13 @@ export class AuthService {
       email: user.email,
       roleKey: user.roleKey,
     };
-    const token = await this.jwt.signAsync(payload);
-    return { token, user };
+    const access_token = await this.jwt.signAsync(payload);
+    return { access_token, user };
   }
 
-  private async loadAuthenticatedUser(userId: string): Promise<AuthenticatedUser> {
+  private async loadAuthenticatedUser(
+    userId: string,
+  ): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { role: true },
@@ -112,7 +145,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
-      fullName: user.fullName,
+      fullName: user.fullName ?? null,  // ← safe null, not forced String
       roleKey: user.roleKey,
       roleLabel: user.role.label,
       permissions: user.role.permissions,

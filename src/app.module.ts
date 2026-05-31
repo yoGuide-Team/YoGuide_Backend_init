@@ -23,12 +23,14 @@ import { PhrasesModule } from './phrases/phrases.module';
 import { FilesModule } from './files/files.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    OnboardingModule,
     HealthModule,
     MeModule,
     PlacesModule,

@@ -141,16 +141,19 @@ export class AdminStatsController {
         userFullName: b.user.fullName,
         placeName: b.place?.name ?? null,
       })),
-      recentWalletTransactions: recentWalletTx.map((t) => ({
-        id: t.id,
-        kind: t.kind,
-        amountCents: t.amountCents,
-        currency: t.currency,
-        createdAt: t.createdAt,
-        userEmail: t.wallet.user.email,
-        bookingId: t.bookingId,
-        notes: t.notes,
-      })),
+      recentWalletTransactions: recentWalletTx
+        // Onboarding top-up rows have no walletId — skip them in the admin feed.
+        .filter((t) => t.wallet !== null)
+        .map((t) => ({
+          id: t.id,
+          kind: t.kind,
+          amountCents: t.amountCents,
+          currency: t.currency,
+          createdAt: t.createdAt,
+          userEmail: t.wallet!.user.email,
+          bookingId: t.bookingId,
+          notes: t.notes,
+        })),
     };
   }
 }
