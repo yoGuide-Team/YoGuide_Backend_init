@@ -1,77 +1,59 @@
-// yoGuide backend — Postgres-native schema. Money is stored in integer cents,
-// arrays use Postgres `text[]`, and JSON columns use the native `jsonb` type.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  directUrl    = env("DIRECT_URL")
   relationMode = "prisma"
 }
 
 /// Local user account. Email + bcrypt password hash + role pointer.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  fullName     String?
-  phone          String?
-  cardNumber     String? 
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  passwordHash       String
+  fullName           String?
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
-  roleKey      String   @default("user")
-  role         Role     @relation(fields: [roleKey], references: [key])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  esimOrders     EsimOrder[]
-  shuttleBookings ShuttleBooking[]
+  roleKey            String              @default("user")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  cardNumber         String?
+  phone              String?
+  role               Role                @relation(fields: [roleKey], references: [key])
+  esimOrders         EsimOrder[]
+  shuttleBookings    ShuttleBooking[]
   walletTransactions WalletTransaction[]
-  tripProfile    TripProfile?
-  eventInterest  EventInterest?
-  notifications       Notification[]
-
-  wallet       Wallet?
-  bookings     Booking[]
+  tripProfile        TripProfile?
+  eventInterest      EventInterest?
+  notifications      Notification[]
+  wallet             Wallet?
+  bookings           Booking[]
 }
+
 model WalletTransaction {
   id             String   @id @default(cuid())
-
-  // ── existing relations (keep these — Wallet and Booking reference them) ──
   walletId       String?
-  wallet         Wallet?  @relation(fields: [walletId], references: [id], onDelete: Cascade)
-
-  bookingId      String?
-  booking        Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-
-  // ── new relation added for onboarding top-up flow ────────────────────────
-  userId         String?
-  user           User?    @relation(fields: [userId], references: [id])
-
-  // ── existing fields (keep these unchanged) ───────────────────────────────
-  // Add any fields that were already on your WalletTransaction here.
-  // Based on your schema the existing model had no explicit fields shown,
-  // so the fields below are the ones needed for both old + new flows:
-  kind           String?  // charge | refund | topup
-  method         String?  // wallet | card | momo | cash
-  amountCents    Int?     // used by booking/wallet flow (integer cents)
+  kind           String?
+  amountCents    Int?
   currency       String   @default("USD")
-  status         String   @default("pending") // pending | settled | failed | processing
+  bookingId      String?
   externalRef    String?
   notes          String?
-
-  // ── new fields for the onboarding wallet top-up flow ─────────────────────
+  createdAt      DateTime @default(now())
+  cardToken      String?
+  method         String?
+  rwfAmount      Float?
   sourceAmount   Float?
   sourceCurrency String?
-  rwfAmount      Float?
-  cardToken      String?
-
-  createdAt      DateTime @default(now())
+  status         String   @default("pending")
+  userId         String?
+  wallet         Wallet?  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  booking        Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user           User?    @relation(fields: [userId], references: [id])
 }
-
 
 model EsimOrder {
   id            String   @id @default(cuid())
@@ -80,7 +62,6 @@ model EsimOrder {
   deliveryEmail String
   status        String   @default("pending")
   createdAt     DateTime @default(now())
-
   user          User     @relation(fields: [userId], references: [id])
 }
 
@@ -91,7 +72,6 @@ model ShuttleBooking {
   slotTime     DateTime
   status       String   @default("confirmed")
   createdAt    DateTime @default(now())
-
   user         User     @relation(fields: [userId], references: [id])
 }
 
@@ -106,7 +86,6 @@ model TripProfile {
   freeSlots       String?
   experienceTypes String[]
   updatedAt       DateTime  @updatedAt
-
   user            User      @relation(fields: [userId], references: [id])
 }
 
@@ -116,57 +95,22 @@ model EventInterest {
   eventIds        String[]
   reminderEnabled Boolean  @default(false)
   updatedAt       DateTime @updatedAt
-
   user            User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {
   id        String   @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   body      String
-  type      String   @default("general")
-  metadata  String?
-  isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
- 
+  isRead    Boolean  @default(false)
+  metadata  String?
+  type      String   @default("general")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, createdAt])
 }
- 
- 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Integration: wallet.service.ts  – call notifyWalletDeposit after top-up
-// ─────────────────────────────────────────────────────────────────────────────
-/*
-// In WalletService constructor inject NotificationsService:
-constructor(
-  private readonly prisma: PrismaService,
-  private readonly notificationsService: NotificationsService,
-) {}
- 
-// Inside topup() after successful transaction:
-await this.notificationsService.notifyWalletDeposit(
-  userId, dto.amount, dto.currency ?? 'RWF');
-*/
- 
- 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Integration: onboarding.service.ts / profile.controller.ts
-//  – call notifyTripProfile after POST /me/trip-profile
-// ─────────────────────────────────────────────────────────────────────────────
-/*
-// In ProfileController inject NotificationsService and call after save:
-await this.notificationsService.notifyTripProfile(
-  req.user.id,
-  dto.travelStyles ?? [],
-  dto.interests ?? []);
- 
-// After POST /me/event-interests:
-await this.notificationsService.notifyEventInterests(
-  req.user.id, dto.interests ?? []);
-*/
-
 
 /// Database-driven role. Each role carries a list of permission strings —
 /// the auth layer expands the user's permission set at request time, so
@@ -183,25 +127,25 @@ model Role {
 
 /// Mirrors the TrippotoPlace data class in packages/yoguide_shared.
 model Place {
-  id                  String   @id
-  name                String
-  tagline             String
-  kind                String
-  latitude            Float
-  longitude           Float
-  address             String
-  phone               String
-  hours               String
-  rating              Float
-  priceLabel          String
-  images              String[] @default([])
-  tags                String[] @default([])
-  about               String
-  venueRef            String?
-  experienceAdultUsd  Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  bookings            Booking[]
+  id                 String    @id
+  name               String
+  tagline            String
+  kind               String
+  latitude           Float
+  longitude          Float
+  address            String
+  phone              String
+  hours              String
+  rating             Float
+  priceLabel         String
+  images             String[]  @default([])
+  tags               String[]  @default([])
+  about              String
+  venueRef           String?
+  experienceAdultUsd Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  bookings           Booking[]
 }
 
 /// Per-user balance kept in integer cents. A wallet is created lazily on
@@ -211,35 +155,35 @@ model Place {
 model Wallet {
   id           String              @id @default(cuid())
   userId       String              @unique
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   balanceCents Int                 @default(0)
   currency     String              @default("USD")
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions WalletTransaction[]
 }
 
 /// One reserved purchase. `type` covers every flow the apps already render:
-///   tour | experience | hotel | guide | rental | shop
+/// tour | experience | hotel | guide | rental | shop
 /// Type-specific payload (dates, adult count, hotel SKU, …) lives in the
 /// `details` JSON column so the row shape stays stable while the app
 /// evolves. Always store amounts in integer cents to keep arithmetic exact.
 model Booking {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  type         String
-  status       String   @default("pending")
-  totalCents   Int
-  currency     String   @default("USD")
-  placeId      String?
-  place        Place?   @relation(fields: [placeId], references: [id])
-  details      Json     @default("{}")
-  scheduledAt  DateTime?
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  transactions BookingTransaction[]
+  id            String               @id @default(cuid())
+  userId        String
+  type          String
+  status        String               @default("pending")
+  totalCents    Int
+  currency      String               @default("USD")
+  placeId       String?
+  details       Json                 @default("{}")
+  scheduledAt   DateTime?
+  notes         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  user          User                 @relation(fields: [userId], references: [id])
+  place         Place?               @relation(fields: [placeId], references: [id])
+  transactions  BookingTransaction[]
   walletEntries WalletTransaction[]
 }
 
@@ -249,21 +193,16 @@ model Booking {
 model BookingTransaction {
   id          String   @id @default(cuid())
   bookingId   String
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  kind        String   // charge | refund
-  method      String   // wallet | card | momo | cash
+  kind        String
+  method      String
   amountCents Int
   currency    String   @default("USD")
-  status      String   @default("pending") // pending | settled | failed
+  status      String   @default("pending")
   externalRef String?
   notes       String?
   createdAt   DateTime @default(now())
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 }
-
-
-// ═════════════════════════════════════════════════════════════════════════
-//  Geography & content
-// ═════════════════════════════════════════════════════════════════════════
 
 /// A city or region the platform covers. Starts with a single seed entry
 /// (Rwanda · Musanze) and is the natural unit to expand into other countries.
@@ -287,19 +226,19 @@ model City {
 /// Festivals, concerts, public events tied to a city. Visible in the apps'
 /// "What's on" feed.
 model Event {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   cityId      String
-  city        City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
   title       String
   description String
   startsAt    DateTime
   endsAt      DateTime?
   venue       String?
-  priceLabel  String   @default("Free")
+  priceLabel  String    @default("Free")
   coverImage  String?
-  tags        String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  tags        String[]  @default([])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  city        City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
 }
 
 /// A localised translator phrase pack — Kinyarwanda, English, French.
@@ -314,19 +253,14 @@ model Phrase {
   createdAt   DateTime @default(now())
 }
 
-// ═════════════════════════════════════════════════════════════════════════
-//  Tours & guides marketplace
-// ═════════════════════════════════════════════════════════════════════════
-
 /// A bookable tour package — moto, EV-car, walking, multi-day. Each tour
 /// carries a curated list of TourStops in order.
 model Tour {
   id              String     @id @default(cuid())
   cityId          String?
-  city            City?      @relation(fields: [cityId], references: [id])
   title           String
   description     String
-  vehicleType     String     // motorbike | ev_car | walking | minivan
+  vehicleType     String
   durationMinutes Int
   priceCents      Int
   currency        String     @default("USD")
@@ -336,21 +270,22 @@ model Tour {
   isPublished     Boolean    @default(true)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
+  city            City?      @relation(fields: [cityId], references: [id])
   stops           TourStop[]
 }
 
 model TourStop {
-  id          String   @id @default(cuid())
-  tourId      String
-  tour        Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
-  ordinal     Int
-  title       String
-  description String?
-  durationMinutes Int  @default(30)
-  latitude    Float?
-  longitude   Float?
-  placeId     String?
-  createdAt   DateTime @default(now())
+  id              String   @id @default(cuid())
+  tourId          String
+  ordinal         Int
+  title           String
+  description     String?
+  durationMinutes Int      @default(30)
+  latitude        Float?
+  longitude       Float?
+  placeId         String?
+  createdAt       DateTime @default(now())
+  tour            Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
 
   @@unique([tourId, ordinal])
 }
@@ -384,33 +319,29 @@ model Guide {
 model GuideDocument {
   id         String   @id @default(cuid())
   guideId    String
-  guide      Guide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
-  kind       String   // licence | id | rdb_certificate | other
+  kind       String
   url        String
-  status     String   @default("pending") // pending | approved | rejected
+  status     String   @default("pending")
   reviewedBy String?
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  guide      Guide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
 }
-
-// ═════════════════════════════════════════════════════════════════════════
-//  User-generated content & engagement
-// ═════════════════════════════════════════════════════════════════════════
 
 /// User reviews on places, guides, or tours. Moderation queue is admin-driven.
 model Review {
-  id          String   @id @default(cuid())
-  authorId    String
-  rating      Int      // 1..5
-  title       String?
-  body        String
-  placeId     String?
-  guideId     String?
-  tourId      String?
-  status      String   @default("pending") // pending | approved | rejected
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  authorId  String
+  rating    Int
+  title     String?
+  body      String
+  placeId   String?
+  guideId   String?
+  tourId    String?
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([placeId])
   @@index([guideId])
@@ -445,14 +376,14 @@ model Itinerary {
 }
 
 model ItineraryItem {
-  id           String    @id @default(cuid())
-  itineraryId  String
-  itinerary    Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-  ordinal      Int
-  placeId      String?
-  notes        String?
-  scheduledAt  DateTime?
-  createdAt    DateTime  @default(now())
+  id          String    @id @default(cuid())
+  itineraryId String
+  ordinal     Int
+  placeId     String?
+  notes       String?
+  scheduledAt DateTime?
+  createdAt   DateTime  @default(now())
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
 }
 
 /// Direct messages — guide ↔ tourist mainly.
@@ -470,24 +401,17 @@ model MessageThread {
 }
 
 model Message {
-  id        String        @id @default(cuid())
-  threadId  String
-  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  senderId  String
-  body      String
-  attachments String[]    @default([])
-  readAt    DateTime?
-  createdAt DateTime      @default(now())
+  id          String        @id @default(cuid())
+  threadId    String
+  senderId    String
+  body        String
+  attachments String[]      @default([])
+  readAt      DateTime?
+  createdAt   DateTime      @default(now())
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
 }
-
-/// In-app notifications. Created by admin broadcasts, system events, or
-/// booking lifecycle hooks.
-
-// ═════════════════════════════════════════════════════════════════════════
-//  Commerce — vendors, products, orders
-// ═════════════════════════════════════════════════════════════════════════
 
 /// A platform-listed business: shop, hotel, tour operator, transport.
 /// Products and (eventually) bookable inventory tie back to a vendor.
@@ -495,7 +419,7 @@ model Vendor {
   id          String    @id @default(cuid())
   slug        String    @unique
   name        String
-  category    String    // hotel | restaurant | shop | operator | transport
+  category    String
   description String?
   contact     String?
   email       String?
@@ -512,32 +436,32 @@ model Vendor {
 
 /// Souvenirs, accommodation packages, anything saleable.
 model Product {
-  id           String      @id @default(cuid())
-  vendorId     String?
-  vendor       Vendor?     @relation(fields: [vendorId], references: [id])
-  slug         String      @unique
-  title        String
-  description  String
-  category     String      // souvenir | apparel | art | food | beverage | rental
-  priceCents   Int
-  currency     String      @default("USD")
-  images       String[]    @default([])
-  badge        String?
-  inStock      Boolean     @default(true)
-  inventory    Int?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  orderItems   OrderItem[]
+  id          String      @id @default(cuid())
+  vendorId    String?
+  slug        String      @unique
+  title       String
+  description String
+  category    String
+  priceCents  Int
+  currency    String      @default("USD")
+  images      String[]    @default([])
+  badge       String?
+  inStock     Boolean     @default(true)
+  inventory   Int?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  vendor      Vendor?     @relation(fields: [vendorId], references: [id])
+  orderItems  OrderItem[]
 }
 
 /// Cart-checkout output. One order can have many line items.
 model Order {
   id           String      @id @default(cuid())
   userId       String
-  status       String      @default("placed") // placed | paid | shipped | delivered | cancelled
+  status       String      @default("placed")
   totalCents   Int
   currency     String      @default("USD")
-  shippingType String?     // hotel_delivery | airport_pickup | self_pickup
+  shippingType String?
   shippingNote String?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -547,32 +471,28 @@ model Order {
 }
 
 model OrderItem {
-  id           String   @id @default(cuid())
-  orderId      String
-  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId    String
-  product      Product  @relation(fields: [productId], references: [id])
-  quantity     Int
-  priceCents   Int
-  currency     String   @default("USD")
-  createdAt    DateTime @default(now())
+  id         String   @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  priceCents Int
+  currency   String   @default("USD")
+  createdAt  DateTime @default(now())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
 }
-
-// ═════════════════════════════════════════════════════════════════════════
-//  Operations
-// ═════════════════════════════════════════════════════════════════════════
 
 /// Append-only ledger of admin / system actions. Indexed for the audit log
 /// page and for replay if anything looks off.
 model AuditLog {
-  id        String   @id @default(cuid())
-  actorId   String?
+  id         String   @id @default(cuid())
+  actorId    String?
   actorEmail String?
-  action    String   // user.update | role.create | place.delete | booking.refund | wallet.adjust | ...
-  entity    String   // user | role | place | booking | wallet | ...
-  entityId  String?
-  metadata  Json?
-  createdAt DateTime @default(now())
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
 
   @@index([entity, entityId])
   @@index([actorId])
