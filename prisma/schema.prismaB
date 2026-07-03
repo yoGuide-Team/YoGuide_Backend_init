@@ -13,13 +13,8 @@ datasource db {
 model User {
   id                 String              @id @default(cuid())
   email              String              @unique
-  passwordHash       String              @default("")
+  passwordHash       String
   fullName           String?
-  /// Google OAuth subject id — set when the account was created via Google Sign-In.
-  /// Null for email+password accounts. Unique so a Google account can only map to
-  /// one user row.
-  googleId           String?             @unique
-  avatarUrl          String?
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
   roleKey            String              @default("user")
@@ -181,9 +176,6 @@ model Booking {
   totalCents    Int
   currency      String               @default("USD")
   placeId       String?
-  tourId        String?
-  guideId       String?
-  quantity      Int                  @default(1)
   details       Json                 @default("{}")
   scheduledAt   DateTime?
   notes         String?
@@ -191,8 +183,6 @@ model Booking {
   updatedAt     DateTime             @updatedAt
   user          User                 @relation(fields: [userId], references: [id])
   place         Place?               @relation(fields: [placeId], references: [id])
-  tour          Tour?                @relation(fields: [tourId], references: [id])
-  guide         Guide?               @relation(fields: [guideId], references: [id])
   transactions  BookingTransaction[]
   walletEntries WalletTransaction[]
 }
@@ -282,7 +272,6 @@ model Tour {
   updatedAt       DateTime   @updatedAt
   city            City?      @relation(fields: [cityId], references: [id])
   stops           TourStop[]
-  bookings        Booking[]
 }
 
 model TourStop {
@@ -325,7 +314,6 @@ model Guide {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   documents       GuideDocument[]
-  bookings        Booking[]
 }
 
 model GuideDocument {
