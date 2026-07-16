@@ -17,11 +17,15 @@ import {
 } from './common/responses';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
-  app.enableCors({
-    origin: ["*", 'http://localhost:5000'],
-    credentials:true,
+
+app.enableCors({
+    origin: '*', // Allows all origins in development. Change to specific domain in production.
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
   });
+
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
@@ -214,7 +218,7 @@ async function bootstrap() {
     },
   });
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT ?? 3030);
   await app.listen(port);
   Logger.log(`yoGuide backend listening on http://localhost:${port}`, 'Bootstrap');
   Logger.log(`API docs: http://localhost:${port}/docs`, 'Bootstrap');

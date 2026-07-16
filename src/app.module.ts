@@ -24,6 +24,7 @@ import { FilesModule } from './files/files.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     FilesModule,
     AnalyticsModule,
     AdminModule,
+    ChatbotModule,
   ],
 })
 export class AppModule {}
