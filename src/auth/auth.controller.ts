@@ -17,12 +17,11 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
-import { LoginDto, RegisterDto, GoogleLoginDto } from "./dto";
+import { LoginDto, RegisterDto, GoogleLoginDto,ForgotPasswordDto,ResetPasswordDto } from "./dto";
 import { ApiErrorResponse, AuthSessionResponse } from "../common/responses";
 import { AuthGuard } from "./auth.guard";
 import { CurrentUser } from "./current-user.decorator";
 import type { AuthenticatedUser } from "./authenticated-user";
-
 @ApiTags("Account")
 @Controller("auth")
 export class AuthController {
@@ -97,7 +96,37 @@ export class AuthController {
   logout() {
     return { ok: true };
   }
+  @Post("forgot-password")
+@ApiOperation({
+  summary: "Forgot Password",
+  description:
+    "Generates a password reset token and sends a reset email.",
+})
+@ApiOkResponse({
+  description:
+    "Always returns success even if the email does not exist.",
+})
+forgotPassword(@Body() dto: ForgotPasswordDto) {
+  return this.auth.forgotPassword(dto.email);
 }
+@Post("reset-password")
+@ApiOperation({
+  summary: "Reset Password",
+  description:
+    "Resets a user's password using a valid reset token.",
+})
+@ApiOkResponse({
+  description: "Password reset successful.",
+})
+@ApiBadRequestResponse({ type: ApiErrorResponse })
+resetPassword(@Body() dto: ResetPasswordDto) {
+  return this.auth.resetPassword(
+    dto.token,
+    dto.password,
+  );
+}
+}
+
 
 
 // import { Body, Controller, Post } from '@nestjs/common';

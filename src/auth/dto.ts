@@ -57,6 +57,31 @@ export class GoogleLoginDto {
   @IsString()
   idToken!: string;
 }
+export class ForgotPasswordDto {
+  @ApiProperty({
+    example: "jane@example.com",
+    description: "Email address associated with the account.",
+  })
+  @IsEmail()
+  email!: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({
+    description: "Password reset token received via email.",
+    example: "a1b2c3d4e5f6...",
+  })
+  @IsString()
+  token!: string;
+
+  @ApiProperty({
+    example: "NewSecurePassword123!",
+    minLength: 8,
+  })
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
 
 // import { ApiProperty } from '@nestjs/swagger';
 // import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';

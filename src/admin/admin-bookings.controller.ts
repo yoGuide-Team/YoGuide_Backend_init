@@ -10,7 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
@@ -19,27 +19,42 @@ import { RequirePermissions } from '../auth/permissions.decorator';
 import { BookingsService } from '../bookings/bookings.service';
 
 class UpdateBookingStatusDto {
-  @IsString() status!: string;
-  @IsOptional() @IsString() notes?: string;
+  @ApiProperty({
+    enum: ['pending', 'confirmed', 'cancelled', 'completed', 'refunded'],
+    example: 'confirmed',
+    description: 'New booking status.',
+  })
+  @IsString()
+  status!: string;
+
+  @ApiProperty({ required: false, example: 'Manually confirmed after phone call.' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 class SettleTransactionDto {
+  @ApiProperty({ enum: ['settled', 'failed'], example: 'settled' })
   @IsIn(['settled', 'failed'])
   status!: string;
 
+  @ApiProperty({ required: false, example: 'txn_8f2c1a' })
   @IsOptional()
   @IsString()
   externalRef?: string;
 }
 
 class ForceRefundDto {
+  @ApiProperty({ example: 5000, minimum: 1, description: 'Refund amount in integer cents.' })
   @IsInt()
   @Min(1)
   amountCents!: number;
 
+  @ApiProperty({ enum: ['wallet', 'card', 'momo', 'cash'], example: 'wallet' })
   @IsIn(['wallet', 'card', 'momo', 'cash'])
   method!: string;
 
+  @ApiProperty({ required: false, example: 'Refunded per operator decision.' })
   @IsOptional()
   @IsString()
   notes?: string;
@@ -58,6 +73,9 @@ export class AdminBookingsController {
   @Get()
   @RequirePermissions('bookings.read')
   @ApiOperation({ summary: 'List bookings', description: 'All bookings, with optional filters. Newest first, capped at 200 rows.' })
+  @ApiQuery({ name: 'status', required: false, description: 'Filter by booking status.' })
+  @ApiQuery({ name: 'userId', required: false, description: 'Filter by owning user.' })
+  @ApiQuery({ name: 'type', required: false, description: 'Filter by booking type.' })
   async list(
     @Query('status') status?: string,
     @Query('userId') userId?: string,

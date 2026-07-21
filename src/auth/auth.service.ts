@@ -10,7 +10,8 @@ import * as bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AuthenticatedUser } from "./authenticated-user";
-
+import { MailService } from "../mail/mail.service";
+import { randomBytes, createHash } from "node:crypto";
 interface JwtPayload {
   sub: string;
   email: string;
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly mailService: MailService,
   ) {
     this.googleClient = new OAuth2Client(
       this.config.get<string>("GOOGLE_CLIENT_ID"),
@@ -266,4 +268,105 @@ export class AuthService {
       permissions: user.role.permissions,
     };
   }
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: email.trim().toLowerCase(),
+      },
+    });
+
+    if (!user) {
+      return {
+        message:
+          "If an account exists for that email, a reset link has been sent.",
+      };
+    }
+
+    const token = randomBytes(32).toString("hex");
+
+    const tokenHash = createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const expiresAt = new Date(
+      Date.now() + 30 * 60 * 1000,
+    );
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: expiresAt,
+      },
+    });
+
+    const frontendUrl =
+      this.config.get<string>("FRONTEND_URL") ??
+      "http://localhost:3000";
+
+    const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🛑 DEBUG LOG: Copy the raw token or URL right out of your NestJS terminal
+    // ─────────────────────────────────────────────────────────────────────────
+    console.log("\n=======================================================");
+    console.log("🔑 RAW TOKEN:", token);
+    console.log("🔗 RESET URL:", resetUrl);
+    console.log("=======================================================\n");
+
+    await this.mailService.sendPasswordResetEmail(
+      user.email,
+      user.fullName ?? "User",
+      resetUrl,
+    );
+
+    return {
+      message:
+        "If an account exists for that email, a reset link has been sent.",
+    };
+  }
+  
+async resetPassword(
+  token: string,
+  password: string,
+) {
+  const tokenHash = createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  const user = await this.prisma.user.findFirst({
+    where: {
+      passwordResetToken: tokenHash,
+      passwordResetExpiresAt: {
+        gt: new Date(),
+      },
+    },
+  });
+
+  if (!user) {
+    throw new UnauthorizedException(
+      "Invalid or expired reset token.",
+    );
+  }
+
+  const passwordHash = await bcrypt.hash(
+    password,
+    10,
+  );
+
+  await this.prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash,
+      passwordResetToken: null,
+      passwordResetExpiresAt: null,
+    },
+  });
+
+  return {
+    message: "Password reset successful.",
+  };
+}
+
 }

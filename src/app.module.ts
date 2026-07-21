@@ -25,6 +25,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { MailModule } from './mail/main.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     AnalyticsModule,
     AdminModule,
     ChatbotModule,
+    MailModule,
   ],
 })
 export class AppModule {}

@@ -36,6 +36,8 @@ model User {
   notifications      Notification[]
   wallet             Wallet?
   bookings           Booking[]
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
 }
 
 model WalletTransaction {
@@ -300,6 +302,7 @@ model TourStop {
 
   @@unique([tourId, ordinal])
 }
+
 
 /// A platform guide. Public profile lives here; document verification
 /// records sit on a separate `GuideDocument` table.
