@@ -3,6 +3,7 @@ import {
   ApiBadRequestResponse,
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiProperty,
@@ -12,6 +13,7 @@ import {
 import { IsIn, IsInt, Min } from 'class-validator';
 import { WalletService } from './wallet.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { ApiErrorResponse, WalletResponse } from '../common/responses';
@@ -49,14 +51,16 @@ export class WalletController {
   }
 
   @Post('topup')
+  @UseGuards(EmailVerifiedGuard)
   @ApiOperation({
     summary: 'Top up wallet (mock)',
     description:
-      "Records a settled top-up transaction and credits the wallet. Mock for now — replace with a Flutterwave / MoMo callback once payment processors are integrated. Real processors will hit a `/webhooks/*` endpoint instead of being driven by the client.",
+      "Records a settled top-up transaction and credits the wallet. Mock for now — replace with a Flutterwave / MoMo callback once payment processors are integrated. Real processors will hit a `/webhooks/*` endpoint instead of being driven by the client. Requires a verified email (POST /auth/verify-otp).",
   })
   @ApiCreatedResponse({ description: 'Wallet after the top-up.', type: WalletResponse })
   @ApiBadRequestResponse({ description: 'Validation failed.', type: ApiErrorResponse })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token.', type: ApiErrorResponse })
+  @ApiForbiddenResponse({ description: 'Email not verified.', type: ApiErrorResponse })
   topUp(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: TopUpDto,

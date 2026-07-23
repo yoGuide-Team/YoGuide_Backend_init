@@ -266,6 +266,7 @@ export class AuthService {
       roleKey: user.roleKey,
       roleLabel: user.role.label,
       permissions: user.role.permissions,
+      emailVerified: user.emailVerified,
     };
   }
 
@@ -369,4 +370,54 @@ async resetPassword(
   };
 }
 
+  // ── Email verification (OTP) ────────────────────────────────────────────
+  // Same hash-and-expire pattern as forgotPassword/resetPassword above —
+  // the raw 6-digit code is never stored, only its sha256 hash.
+
+  async sendOtp(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException("User no longer exists.");
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeHash = createHash("sha256").update(code).digest("hex");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
+    });
+
+    console.log("\n=======================================================");
+    console.log("🔑 OTP CODE:", code, "for", user.email);
+    console.log("=======================================================\n");
+
+    await this.mailService.sendOtpEmail(user.email, code);
+
+    return { message: "Verification code sent." };
+  }
+
+  async verifyOtp(userId: string, code: string) {
+    const codeHash = createHash("sha256").update(code).digest("hex");
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        otpCodeHash: codeHash,
+        otpExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException("Invalid or expired verification code.");
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true, otpCodeHash: null, otpExpiresAt: null },
+    });
+
+    return { emailVerified: true };
+  }
 }

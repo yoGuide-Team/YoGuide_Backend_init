@@ -27,6 +27,17 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
+
+class ApplyGuideDto {
+  @IsString() @MinLength(2) fullName!: string;
+  @IsOptional() @IsString() bio?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) specialties?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true }) languages?: string[];
+  @IsOptional() @IsInt() @Min(0) @Max(60) yearsExperience?: number;
+  @IsOptional() @IsString() city?: string;
+}
 
 class CreateGuideDto {
   @IsString() @MinLength(2) fullName!: string;
@@ -94,6 +105,60 @@ export class GuidesController {
         specialties: specialty ? { has: specialty } : undefined,
       },
       orderBy: [{ rating: 'desc' }, { reviewCount: 'desc' }],
+    });
+  }
+
+  @Post('apply')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Apply to become a guide',
+    description:
+      "Creates an unverified Guide profile linked to the signed-in user's account (one per account). An admin must verify it (POST /admin/guides/:id/verify) before it's discoverable and before the guide dashboard becomes reachable — verifying also promotes the user's role to `tour`.",
+  })
+  async apply(@CurrentUser() user: AuthenticatedUser, @Body() dto: ApplyGuideDto) {
+    const existing = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (existing) {
+      throw new BadRequestException('You already have a guide application on file.');
+    }
+    return this.prisma.guide.create({
+      data: {
+        userId: user.id,
+        fullName: dto.fullName,
+        bio: dto.bio,
+        specialties: dto.specialties ?? [],
+        languages: dto.languages ?? [],
+        yearsExperience: dto.yearsExperience ?? 0,
+        city: dto.city,
+        isVerified: false,
+      },
+    });
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Signed-in user's own guide profile" })
+  async mine(@CurrentUser() user: AuthenticatedUser) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    return guide;
+  }
+
+  @Get('me/bookings')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Bookings assigned to the signed-in user's guide profile" })
+  async myBookings(@CurrentUser() user: AuthenticatedUser) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    return this.prisma.booking.findMany({
+      where: { guideId: guide.id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { email: true, fullName: true } },
+        place: { select: { name: true } },
+      },
     });
   }
 
@@ -193,14 +258,25 @@ export class AdminGuidesController {
 
   @Post(':id/verify')
   @RequirePermissions('guides.write')
-  @ApiOperation({ summary: 'Mark guide as verified' })
+  @ApiOperation({
+    summary: 'Mark guide as verified',
+    description:
+      "If the guide is linked to a user account (self-applied via POST /guides/apply), also promotes that user's role to `tour` so /guide-dashboard becomes reachable for them.",
+  })
   async verify(@Param('id') id: string) {
     const exists = await this.prisma.guide.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException(`Guide '${id}' not found.`);
-    return this.prisma.guide.update({
+    const updated = await this.prisma.guide.update({
       where: { id },
       data: { isVerified: true },
     });
+    if (exists.userId) {
+      await this.prisma.user.update({
+        where: { id: exists.userId },
+        data: { roleKey: 'tour' },
+      });
+    }
+    return updated;
   }
 
   @Post(':id/documents')

@@ -1,14 +1,10 @@
-node_modules/
-dist/
+node_modules
+dist
 .env
 .env.local
+.git
 *.log
 prisma/dev.db
 prisma/dev.db-journal
 firebase-service-account.json
 .DS_Store
-.DS_Store
-
-# Local archive/scratch
-backend-yoGuide.zip
-*.bak-conflict

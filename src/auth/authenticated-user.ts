@@ -6,6 +6,7 @@ export interface AuthenticatedUser {
   roleLabel: string;
   /// Materialised permission set for this request. `*` means superuser.
   permissions: string[];
+  emailVerified: boolean;
 }
 
 /// Returns true if the user's permission set satisfies the required

@@ -33,4 +33,23 @@ export class MailService {
       `,
     });
   }
+
+  async sendOtpEmail(email: string, code: string) {
+    await this.resend.emails.send({
+      from: "onboarding@resend.dev",
+      to: email,
+      subject: `${code} is your yoGuide verification code`,
+      html: `
+        <h2>Verify your email</h2>
+
+        <p>Your yoGuide verification code is:</p>
+
+        <p style="font-size: 32px; font-weight: bold; letter-spacing: 4px;">${code}</p>
+
+        <p>This code expires in 10 minutes.</p>
+
+        <p>If you didn't request this, you can ignore this email.</p>
+      `,
+    });
+  }
 }

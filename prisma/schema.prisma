@@ -38,6 +38,13 @@ model User {
   bookings           Booking[]
   passwordResetToken     String?
   passwordResetExpiresAt DateTime?
+  /// Gates specific actions (booking, wallet top-up), not registration/login
+  /// itself — see EmailVerifiedGuard. Same hash-and-expire pattern as
+  /// passwordResetToken above, not a new mechanism.
+  emailVerified          Boolean   @default(false)
+  otpCodeHash            String?
+  otpExpiresAt           DateTime?
+  guide                  Guide?
 }
 
 model WalletTransaction {
@@ -309,6 +316,9 @@ model TourStop {
 model Guide {
   id              String          @id @default(cuid())
   userId          String?         @unique
+  /// Populated when a user self-applies via POST /guides/apply — admin-
+  /// created guides (POST /admin/guides) have no linked user account.
+  user            User?           @relation(fields: [userId], references: [id])
   fullName        String
   emoji           String?
   bio             String?

@@ -83,6 +83,16 @@ export class ResetPasswordDto {
   password!: string;
 }
 
+export class VerifyOtpDto {
+  @ApiProperty({
+    example: "482913",
+    description: "6-digit code emailed by POST /auth/send-otp.",
+  })
+  @IsString()
+  @MinLength(6)
+  code!: string;
+}
+
 // import { ApiProperty } from '@nestjs/swagger';
 // import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 

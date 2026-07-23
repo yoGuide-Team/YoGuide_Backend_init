@@ -17,7 +17,7 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
-import { LoginDto, RegisterDto, GoogleLoginDto,ForgotPasswordDto,ResetPasswordDto } from "./dto";
+import { LoginDto, RegisterDto, GoogleLoginDto,ForgotPasswordDto,ResetPasswordDto,VerifyOtpDto } from "./dto";
 import { ApiErrorResponse, AuthSessionResponse } from "../common/responses";
 import { AuthGuard } from "./auth.guard";
 import { CurrentUser } from "./current-user.decorator";
@@ -125,6 +125,35 @@ resetPassword(@Body() dto: ResetPasswordDto) {
     dto.password,
   );
 }
+
+  @Post("send-otp")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Send email verification code",
+    description:
+      "Emails a 6-digit code to the signed-in user's own address, valid for 10 minutes. " +
+      "Verifying it (POST /auth/verify-otp) is required before booking or wallet top-up.",
+  })
+  @ApiOkResponse({ description: "Code sent." })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponse })
+  sendOtp(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.sendOtp(user.id);
+  }
+
+  @Post("verify-otp")
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Verify email with OTP code",
+    description: "Checks the code sent by POST /auth/send-otp and marks the account emailVerified.",
+  })
+  @ApiOkResponse({ description: "Email verified." })
+  @ApiBadRequestResponse({ type: ApiErrorResponse })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponse })
+  verifyOtp(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyOtpDto) {
+    return this.auth.verifyOtp(user.id, dto.code);
+  }
 }
 
 

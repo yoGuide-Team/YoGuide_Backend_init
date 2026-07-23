@@ -12,6 +12,7 @@ import {
 } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { CancelBookingDto, CreateBookingDto } from './dto';
@@ -25,10 +26,11 @@ export class BookingsController {
   constructor(private readonly bookings: BookingsService) {}
 
   @Post()
+  @UseGuards(EmailVerifiedGuard)
   @ApiOperation({
     summary: 'Create booking',
     description:
-      "Creates a booking and the associated charge transaction in a single DB transaction. If `paymentMethod=wallet`, the wallet is debited atomically — insufficient funds → 400. Other methods leave the booking and its charge in `pending` until the operator settles them.",
+      "Creates a booking and the associated charge transaction in a single DB transaction. If `paymentMethod=wallet`, the wallet is debited atomically — insufficient funds → 400. Other methods leave the booking and its charge in `pending` until the operator settles them. Requires a verified email (POST /auth/verify-otp).",
   })
   @ApiCreatedResponse({ description: 'Booking + charge transaction.', type: BookingResponse })
   @ApiBadRequestResponse({
@@ -36,6 +38,7 @@ export class BookingsController {
     type: ApiErrorResponse,
   })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid bearer token.', type: ApiErrorResponse })
+  @ApiForbiddenResponse({ description: 'Email not verified.', type: ApiErrorResponse })
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBookingDto) {
     return this.bookings.create(user.id, dto);
   }
