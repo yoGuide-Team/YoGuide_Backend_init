@@ -31,8 +31,9 @@ export class MailService {
       });
       this.logger.log(`Password reset email sent to ${email}`);
     } catch (error) {
+      // Best-effort: an SMTP outage/misconfig shouldn't 500 the request that
+      // triggered the email — the reset token still exists in the DB either way.
       this.logger.error(`Failed to send password reset email to ${email}:`, error);
-      throw error;
     }
   }
 
@@ -54,8 +55,10 @@ export class MailService {
       });
       this.logger.log(`OTP verification email sent to ${email}`);
     } catch (error) {
+      // Best-effort, same as sendPasswordResetEmail: the code is already
+      // logged to the console by the caller before this runs, and register()/
+      // login() must still succeed even if Gmail SMTP is unreachable.
       this.logger.error(`Failed to send OTP email to ${email}:`, error);
-      throw error;
     }
   }
 }

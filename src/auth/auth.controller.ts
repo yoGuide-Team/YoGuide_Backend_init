@@ -22,7 +22,6 @@ import {
   GoogleLoginDto,
   ForgotPasswordDto,
   ResetPasswordDto,
-  VerifyOtpDto,
   VerifyRegisterOtpDto,
   ResendOtpDto
 } from "./dto";
@@ -153,20 +152,5 @@ resendOtp(@Body() dto: ResendOtpDto) {
   @ApiBadRequestResponse({ type: ApiErrorResponse })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.token, dto.password);
-  }
-
-  @Post("verify-otp")
-  @UseGuards(AuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: "Verify email with OTP code (Authenticated)",
-    description:
-      "Checks the code sent by POST /auth/send-otp and marks the account emailVerified.",
-  })
-  @ApiOkResponse({ description: "Email verified." })
-  @ApiBadRequestResponse({ type: ApiErrorResponse })
-  @ApiUnauthorizedResponse({ type: ApiErrorResponse })
-  verifyOtp(@CurrentUser() user: AuthenticatedUser, @Body() dto: VerifyOtpDto) {
-    return this.auth.verifyOtp(user.id, dto.code);
   }
 }

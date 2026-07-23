@@ -329,55 +329,6 @@ async verifyRegisterOtp(email: string, code: string): Promise<AuthSession> {
 
   return { message: "Verification code sent." };
 }
-  // ── Authenticated User OTP Verification ──────────────────────────
-
-  async sendOtp(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException("User no longer exists.");
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const codeHash = createHash("sha256").update(code).digest("hex");
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
-    });
-
-    console.log("\n=======================================================");
-    console.log("🔑 OTP CODE:", code, "for", user.email);
-    console.log("=======================================================\n");
-
-    await this.mailService.sendOtpEmail(user.email, code);
-
-    return { message: "Verification code sent." };
-  }
-
-  async verifyOtp(userId: string, code: string) {
-    const codeHash = createHash("sha256").update(code).digest("hex");
-
-    const user = await this.prisma.user.findFirst({
-      where: {
-        id: userId,
-        otpCodeHash: codeHash,
-        otpExpiresAt: { gt: new Date() },
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException("Invalid or expired verification code.");
-    }
-
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { emailVerified: true, otpCodeHash: null, otpExpiresAt: null },
-    });
-
-    return { emailVerified: true };
-  }
-
   // ── Password Reset ────────────────────────────────────────────────────────
 
   async forgotPassword(email: string) {

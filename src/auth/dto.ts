@@ -82,15 +82,6 @@ export class ResetPasswordDto {
   password!: string;
 }
 
-export class VerifyOtpDto {
-  @ApiProperty({
-    example: "482913",
-    description: "6-digit code emailed by POST /auth/send-otp.",
-  })
-  @IsString()
-  @MinLength(6)
-  code!: string;
-}
 export class VerifyRegisterOtpDto {
   @ApiProperty({ example: "user@example.com" })
   @IsEmail()
