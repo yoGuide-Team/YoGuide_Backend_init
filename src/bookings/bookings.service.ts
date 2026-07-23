@@ -30,6 +30,24 @@ export class BookingsService {
         throw new BadRequestException(`Place '${dto.placeId}' does not exist.`);
       }
     }
+    if (dto.guideId) {
+      const exists = await this.prisma.guide.findUnique({
+        where: { id: dto.guideId },
+        select: { id: true },
+      });
+      if (!exists) {
+        throw new BadRequestException(`Guide '${dto.guideId}' does not exist.`);
+      }
+    }
+    if (dto.vendorId) {
+      const exists = await this.prisma.vendor.findUnique({
+        where: { id: dto.vendorId },
+        select: { id: true },
+      });
+      if (!exists) {
+        throw new BadRequestException(`Vendor '${dto.vendorId}' does not exist.`);
+      }
+    }
 
     // Wallet path: validate balance + debit + create transactions atomically.
     if (dto.paymentMethod === 'wallet') {
@@ -202,6 +220,8 @@ export class BookingsService {
       totalCents: dto.totalCents,
       currency: dto.currency ?? 'USD',
       placeId: dto.placeId,
+      guideId: dto.guideId,
+      vendorId: dto.vendorId,
       details: (dto.details ?? {}) as Prisma.InputJsonValue,
       scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
       notes: dto.notes,

@@ -44,6 +44,22 @@ export class CreateBookingDto {
   placeId?: string;
 
   @ApiProperty({
+    required: false,
+    description: 'Guide id, for type=guide bookings — powers GET /guides/me/bookings.',
+  })
+  @IsOptional()
+  @IsString()
+  guideId?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Vendor id, for type=hotel bookings — powers GET /vendors/me/bookings.',
+  })
+  @IsOptional()
+  @IsString()
+  vendorId?: string;
+
+  @ApiProperty({
     example: { adults: 2, date: '2026-06-12', notes: 'Slow pace please' },
     required: false,
     description:

@@ -100,7 +100,10 @@ export class GuidesController {
       where: {
         isAvailable: true,
         isVerified: includeUnverified === 'true' ? undefined : true,
-        city: city || undefined,
+        // Case-insensitive — same fix as vendors.controller.ts's list():
+        // frontend passes lowercase city ('musanze'), stored data is
+        // capitalized ('Musanze').
+        city: city ? { equals: city, mode: 'insensitive' } : undefined,
         languages: language ? { has: language } : undefined,
         specialties: specialty ? { has: specialty } : undefined,
       },

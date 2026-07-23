@@ -45,6 +45,7 @@ model User {
   otpCodeHash            String?
   otpExpiresAt           DateTime?
   guide                  Guide?
+  vendor                 Vendor?
 }
 
 model WalletTransaction {
@@ -192,6 +193,10 @@ model Booking {
   placeId       String?
   tourId        String?
   guideId       String?
+  /// Set for `type: 'hotel'` bookings against a self-registered vendor —
+  /// room/dates/guest-count specifics live in `details` (jsonb), same
+  /// convention as every other booking type.
+  vendorId      String?
   quantity      Int                  @default(1)
   details       Json                 @default("{}")
   scheduledAt   DateTime?
@@ -202,6 +207,7 @@ model Booking {
   place         Place?               @relation(fields: [placeId], references: [id])
   tour          Tour?                @relation(fields: [tourId], references: [id])
   guide         Guide?               @relation(fields: [guideId], references: [id])
+  vendor        Vendor?              @relation(fields: [vendorId], references: [id])
   transactions  BookingTransaction[]
   walletEntries WalletTransaction[]
 }
@@ -364,13 +370,16 @@ model Review {
   placeId   String?
   guideId   String?
   tourId    String?
+  vendorId  String?
   status    String   @default("pending")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  vendor    Vendor?  @relation(fields: [vendorId], references: [id])
 
   @@index([placeId])
   @@index([guideId])
   @@index([tourId])
+  @@index([vendorId])
 }
 
 /// User-saved places, guides, or tours.
@@ -457,6 +466,17 @@ model Vendor {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   products    Product[]
+  /// Set when a user self-applies via POST /vendors/apply — admin-created
+  /// vendors (POST /admin/vendors) have no linked owner account.
+  ownerId      String?  @unique
+  owner        User?    @relation(fields: [ownerId], references: [id])
+  /// Tourist-facing hotel-browsing fields (HotelListPage/HotelDetailPage).
+  address      String?
+  amenities    String[] @default([])
+  checkInTime  String?
+  checkOutTime String?
+  bookings     Booking[]
+  reviews      Review[]
 }
 
 /// Souvenirs, accommodation packages, anything saleable.

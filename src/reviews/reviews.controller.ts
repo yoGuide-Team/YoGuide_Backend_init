@@ -28,6 +28,7 @@ class CreateReviewDto {
   @IsOptional() @IsString() placeId?: string;
   @IsOptional() @IsString() guideId?: string;
   @IsOptional() @IsString() tourId?: string;
+  @IsOptional() @IsString() vendorId?: string;
 }
 
 class ModerateReviewDto {
@@ -48,10 +49,12 @@ export class ReviewsController {
   @ApiQuery({ name: 'placeId', required: false })
   @ApiQuery({ name: 'guideId', required: false })
   @ApiQuery({ name: 'tourId', required: false })
+  @ApiQuery({ name: 'vendorId', required: false })
   list(
     @Query('placeId') placeId?: string,
     @Query('guideId') guideId?: string,
     @Query('tourId') tourId?: string,
+    @Query('vendorId') vendorId?: string,
   ) {
     return this.prisma.review.findMany({
       where: {
@@ -59,6 +62,7 @@ export class ReviewsController {
         placeId: placeId || undefined,
         guideId: guideId || undefined,
         tourId: tourId || undefined,
+        vendorId: vendorId || undefined,
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -75,9 +79,9 @@ export class ReviewsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateReviewDto,
   ) {
-    if (!dto.placeId && !dto.guideId && !dto.tourId) {
+    if (!dto.placeId && !dto.guideId && !dto.tourId && !dto.vendorId) {
       throw new BadRequestException(
-        'At least one of placeId, guideId, or tourId must be provided.',
+        'At least one of placeId, guideId, tourId, or vendorId must be provided.',
       );
     }
     return this.prisma.review.create({
