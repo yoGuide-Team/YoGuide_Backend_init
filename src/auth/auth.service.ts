@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  BadRequestException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
@@ -12,6 +13,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { AuthenticatedUser } from "./authenticated-user";
 import { MailService } from "../mail/mail.service";
 import { randomBytes, createHash } from "node:crypto";
+
 interface JwtPayload {
   sub: string;
   email: string;
@@ -21,6 +23,12 @@ interface JwtPayload {
 export interface AuthSession {
   access_token: string;
   user: AuthenticatedUser;
+}
+
+export interface RegisterResult {
+  requiresVerification: boolean;
+  email: string;
+  message: string;
 }
 
 @Injectable()
@@ -48,7 +56,7 @@ export class AuthService {
     userType?: string;
     cardNumber?: string;
     roleKey?: string;
-  }): Promise<AuthSession> {
+  }): Promise<RegisterResult> {
     const email = input.email.trim().toLowerCase();
     const roleKey = this.resolveRoleKey(input.userType ?? input.roleKey);
 
@@ -71,6 +79,12 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(input.password, 10);
+
+    // Generate 6-digit verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeHash = createHash("sha256").update(code).digest("hex");
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
     const user = await this.prisma.user.create({
       data: {
         email,
@@ -79,10 +93,24 @@ export class AuthService {
         phone: input.phone?.trim() ?? null,
         cardNumber: input.cardNumber?.trim() ?? null,
         roleKey: effectiveRole,
+        emailVerified: false,
+        otpCodeHash: codeHash,
+        otpExpiresAt: expiresAt,
       },
     });
 
-    return this.buildSession(user.id);
+    console.log("\n=======================================================");
+    console.log("🔑 REGISTRATION OTP CODE:", code, "for", user.email);
+    console.log("=======================================================\n");
+
+    await this.mailService.sendOtpEmail(user.email, code);
+
+    return {
+      requiresVerification: true,
+      email: user.email,
+      message:
+        "Registration successful. Please enter the verification code sent to your email.",
+    };
   }
 
   // ── Email + password login ────────────────────────────────────────────────
@@ -96,23 +124,40 @@ export class AuthService {
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException("Invalid email or password.");
     }
+
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
       throw new UnauthorizedException("Invalid email or password.");
     }
+
+    // 🔑 Block unverified email accounts from obtaining a JWT session
+    if (!user.emailVerified) {
+      // Re-issue a fresh OTP code automatically
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const codeHash = createHash("sha256").update(code).digest("hex");
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
+      });
+
+      console.log("\n=======================================================");
+      console.log("🔑 UNVERIFIED LOGIN OTP CODE:", code, "for", user.email);
+      console.log("=======================================================\n");
+
+      await this.mailService.sendOtpEmail(user.email, code);
+
+      throw new UnauthorizedException(
+        "EMAIL_NOT_VERIFIED: Your email is not verified. A new verification code has been sent to your email.",
+      );
+    }
+
     return this.buildSession(user.id);
   }
 
   // ── Google Sign-In ────────────────────────────────────────────────────────
 
-  /**
-   * Receives the ID token the Flutter `google_sign_in` package returns after
-   * the user chooses a Google account, verifies it with Google's servers,
-   * then either creates a new User row or logs into the existing one.
-   *
-   * Returns the same `{ access_token, user }` shape as email/password login
-   * so the Flutter side needs no special handling.
-   */
   async loginWithGoogle(token: string): Promise<AuthSession> {
     const clientId = this.config.get<string>("GOOGLE_CLIENT_ID");
     if (!clientId) {
@@ -126,9 +171,6 @@ export class AuthService {
     let name: string | undefined;
     let picture: string | undefined;
 
-    // Try verifying as an ID token (JWT) first — used on Android/iOS.
-    // If that fails, treat it as an access token (used on web) and verify
-    // via Google's tokeninfo endpoint.
     const looksLikeJwt = token.split(".").length === 3;
 
     if (looksLikeJwt) {
@@ -152,8 +194,6 @@ export class AuthService {
       name = payload.name;
       picture = payload.picture;
     } else {
-      // Access token path — used by google_sign_in on web.
-      // Verify via Google's userinfo endpoint.
       const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -178,16 +218,19 @@ export class AuthService {
       picture = info.picture;
     }
 
-    // Find or create the user
     let user = await this.prisma.user.findFirst({
       where: { OR: [{ googleId }, { email: email.toLowerCase() }] },
     });
 
     if (user) {
-      if (!user.googleId) {
+      if (!user.googleId || !user.emailVerified) {
         user = await this.prisma.user.update({
           where: { id: user.id },
-          data: { googleId, avatarUrl: user.avatarUrl ?? picture ?? null },
+          data: {
+            googleId,
+            avatarUrl: user.avatarUrl ?? picture ?? null,
+            emailVerified: true, // Google already verified this email
+          },
         });
       }
     } else {
@@ -205,6 +248,7 @@ export class AuthService {
           avatarUrl: picture ?? null,
           googleId,
           roleKey: "user",
+          emailVerified: true, // Automatically trusted from Google OAuth
         },
       });
     }
@@ -212,167 +256,80 @@ export class AuthService {
     return this.buildSession(user.id);
   }
 
-  // ── Token verification (used by AuthGuard) ────────────────────────────────
+  // ── Public OTP Verification & Resend ──────────────────────────────────────
 
-  async verifyToken(token: string): Promise<AuthenticatedUser> {
-    let payload: JwtPayload;
-    try {
-      payload = await this.jwt.verifyAsync<JwtPayload>(token);
-    } catch {
-      throw new UnauthorizedException("Invalid or expired token.");
-    }
-    return this.loadAuthenticatedUser(payload.sub);
+async verifyRegisterOtp(email: string, code: string): Promise<AuthSession> {
+  if (!email || typeof email !== "string") {
+    throw new BadRequestException("Email is required.");
+  }
+  if (!code || typeof code !== "string") {
+    throw new BadRequestException("OTP code is required.");
   }
 
-  // ── helpers ───────────────────────────────────────────────────────────────
-
-  private resolveRoleKey(value?: string): string {
-    if (!value) return "user";
-    const map: Record<string, string> = {
-      Visitor: "user",
-      Resident: "user",
-      "Hospitality Card Holder": "user",
-      admin: "admin",
-      user: "user",
-    };
-    return map[value] ?? "user";
-  }
-
-  private async buildSession(userId: string): Promise<AuthSession> {
-    const user = await this.loadAuthenticatedUser(userId);
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      roleKey: user.roleKey,
-    };
-    const access_token = await this.jwt.signAsync(payload);
-    return { access_token, user };
-  }
-
-  private async loadAuthenticatedUser(
-    userId: string,
-  ): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { role: true },
-    });
-    if (!user) {
-      throw new UnauthorizedException("User no longer exists.");
-    }
-    return {
-      id: user.id,
-      email: user.email,
-      fullName: user.fullName ?? null,
-      roleKey: user.roleKey,
-      roleLabel: user.role.label,
-      permissions: user.role.permissions,
-      emailVerified: user.emailVerified,
-    };
-  }
-
-  async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({
-      where: {
-        email: email.trim().toLowerCase(),
-      },
-    });
-
-    if (!user) {
-      return {
-        message:
-          "If an account exists for that email, a reset link has been sent.",
-      };
-    }
-
-    const token = randomBytes(32).toString("hex");
-
-    const tokenHash = createHash("sha256")
-      .update(token)
-      .digest("hex");
-
-    const expiresAt = new Date(
-      Date.now() + 30 * 60 * 1000,
-    );
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordResetToken: tokenHash,
-        passwordResetExpiresAt: expiresAt,
-      },
-    });
-
-    const frontendUrl =
-      this.config.get<string>("FRONTEND_URL") ??
-      "http://localhost:3000";
-
-    const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🛑 DEBUG LOG: Copy the raw token or URL right out of your NestJS terminal
-    // ─────────────────────────────────────────────────────────────────────────
-    console.log("\n=======================================================");
-    console.log("🔑 RAW TOKEN:", token);
-    console.log("🔗 RESET URL:", resetUrl);
-    console.log("=======================================================\n");
-
-    await this.mailService.sendPasswordResetEmail(
-      user.email,
-      user.fullName ?? "User",
-      resetUrl,
-    );
-
-    return {
-      message:
-        "If an account exists for that email, a reset link has been sent.",
-    };
-  }
-  
-async resetPassword(
-  token: string,
-  password: string,
-) {
-  const tokenHash = createHash("sha256")
-    .update(token)
-    .digest("hex");
+  const targetEmail = email.trim().toLowerCase();
+  const codeHash = createHash("sha256").update(code.trim()).digest("hex");
 
   const user = await this.prisma.user.findFirst({
     where: {
-      passwordResetToken: tokenHash,
-      passwordResetExpiresAt: {
-        gt: new Date(),
-      },
+      email: targetEmail,
+      otpCodeHash: codeHash,
+      otpExpiresAt: { gt: new Date() },
     },
   });
 
   if (!user) {
-    throw new UnauthorizedException(
-      "Invalid or expired reset token.",
-    );
+    throw new UnauthorizedException("Invalid or expired verification code.");
   }
-
-  const passwordHash = await bcrypt.hash(
-    password,
-    10,
-  );
 
   await this.prisma.user.update({
     where: { id: user.id },
-    data: {
-      passwordHash,
-      passwordResetToken: null,
-      passwordResetExpiresAt: null,
-    },
+    data: { emailVerified: true, otpCodeHash: null, otpExpiresAt: null },
   });
 
-  return {
-    message: "Password reset successful.",
-  };
+  return this.buildSession(user.id);
 }
 
-  // ── Email verification (OTP) ────────────────────────────────────────────
-  // Same hash-and-expire pattern as forgotPassword/resetPassword above —
-  // the raw 6-digit code is never stored, only its sha256 hash.
+ async sendOtpByEmail(email: string) {
+  if (!email || typeof email !== "string") {
+    throw new BadRequestException("Email is required.");
+  }
+
+  const targetEmail = email.trim().toLowerCase();
+  const user = await this.prisma.user.findUnique({
+    where: { email: targetEmail },
+  });
+
+  if (!user) {
+    return {
+      message: "If an account exists for that email, a code has been sent.",
+    };
+  }
+
+  // 🔑 Check if email is already verified
+  if (user.emailVerified) {
+    return {
+      message: "This email is already verified. You can log in directly.",
+    };
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const codeHash = createHash("sha256").update(code).digest("hex");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await this.prisma.user.update({
+    where: { id: user.id },
+    data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
+  });
+
+  console.log("\n=======================================================");
+  console.log("🔑 RESENT OTP CODE:", code, "for", user.email);
+  console.log("=======================================================\n");
+
+  await this.mailService.sendOtpEmail(user.email, code);
+
+  return { message: "Verification code sent." };
+}
+  // ── Authenticated User OTP Verification ──────────────────────────
 
   async sendOtp(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -419,5 +376,139 @@ async resetPassword(
     });
 
     return { emailVerified: true };
+  }
+
+  // ── Password Reset ────────────────────────────────────────────────────────
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+
+    if (!user) {
+      return {
+        message:
+          "If an account exists for that email, a reset link has been sent.",
+      };
+    }
+
+    const token = randomBytes(32).toString("hex");
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: expiresAt,
+      },
+    });
+
+    const frontendUrl =
+      this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
+
+    const resetUrl = frontendUrl.endsWith("/reset-password")
+      ? `${frontendUrl}?token=${token}`
+      : `${frontendUrl}/reset-password?token=${token}`;
+
+    console.log("\n=======================================================");
+    console.log("🔑 RAW TOKEN:", token);
+    console.log("🔗 RESET URL:", resetUrl);
+    console.log("=======================================================\n");
+
+    await this.mailService.sendPasswordResetEmail(
+      user.email,
+      user.fullName ?? "User",
+      resetUrl,
+    );
+
+    return {
+      message:
+        "If an account exists for that email, a reset link has been sent.",
+    };
+  }
+
+  async resetPassword(token: string, password: string) {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException("Invalid or expired reset token.");
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+
+    return { message: "Password reset successful." };
+  }
+
+  // ── Token verification & Helpers ──────────────────────────────────────────
+
+  async verifyToken(token: string): Promise<AuthenticatedUser> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwt.verifyAsync<JwtPayload>(token);
+    } catch {
+      throw new UnauthorizedException("Invalid or expired token.");
+    }
+    return this.loadAuthenticatedUser(payload.sub);
+  }
+
+  private resolveRoleKey(value?: string): string {
+    if (!value) return "user";
+    const map: Record<string, string> = {
+      Visitor: "user",
+      Resident: "user",
+      "Hospitality Card Holder": "user",
+      admin: "admin",
+      user: "user",
+    };
+    return map[value] ?? "user";
+  }
+
+  private async buildSession(userId: string): Promise<AuthSession> {
+    const user = await this.loadAuthenticatedUser(userId);
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      roleKey: user.roleKey,
+    };
+    const access_token = await this.jwt.signAsync(payload);
+    return { access_token, user };
+  }
+
+  private async loadAuthenticatedUser(
+    userId: string,
+  ): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException("User no longer exists.");
+    }
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName ?? null,
+      roleKey: user.roleKey,
+      roleLabel: user.role.label,
+      permissions: user.role.permissions,
+      emailVerified: user.emailVerified,
+    };
   }
 }
