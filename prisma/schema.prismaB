@@ -31,6 +31,9 @@ model User {
   notifications      Notification[]
   wallet             Wallet?
   bookings           Booking[]
+  emailVerified          Boolean             @default(false)
+  otpCodeHash            String?
+  otpExpiresAt           DateTime?
 }
 
 model WalletTransaction {

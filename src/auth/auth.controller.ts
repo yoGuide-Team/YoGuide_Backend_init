@@ -3,7 +3,6 @@ import {
   Controller,
   Get,
   Post,
-  UnauthorizedException,
   UseGuards,
 } from "@nestjs/common";
 import {
@@ -17,11 +16,21 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
-import { LoginDto, RegisterDto, GoogleLoginDto,ForgotPasswordDto,ResetPasswordDto,VerifyOtpDto } from "./dto";
+import {
+  LoginDto,
+  RegisterDto,
+  GoogleLoginDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  VerifyOtpDto,
+  VerifyRegisterOtpDto,
+  ResendOtpDto
+} from "./dto";
 import { ApiErrorResponse, AuthSessionResponse } from "../common/responses";
 import { AuthGuard } from "./auth.guard";
 import { CurrentUser } from "./current-user.decorator";
 import type { AuthenticatedUser } from "./authenticated-user";
+
 @ApiTags("Account")
 @Controller("auth")
 export class AuthController {
@@ -31,19 +40,47 @@ export class AuthController {
   @ApiOperation({
     summary: "Register",
     description:
-      "Creates a new account with the default `user` role. Returns a 30-day JWT and the user record.",
+      "Creates a new account with unverified status and dispatches a 6-digit OTP verification code to the email address. Returns `{ requiresVerification: true, email }`.",
   })
-  @ApiCreatedResponse({ type: AuthSessionResponse })
+  @ApiCreatedResponse({
+    description: "Account created. Verification code sent via email.",
+  })
   @ApiBadRequestResponse({ type: ApiErrorResponse })
   @ApiConflictResponse({ type: ApiErrorResponse })
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
 
+ @Post("verify-register-otp")
+@ApiOperation({
+  summary: "Verify registration OTP",
+  description:
+    "Public endpoint to verify the 6-digit code sent after registration or unverified login.",
+})
+@ApiOkResponse({ type: AuthSessionResponse })
+@ApiBadRequestResponse({ type: ApiErrorResponse })
+@ApiUnauthorizedResponse({ type: ApiErrorResponse })
+verifyRegisterOtp(@Body() dto: VerifyRegisterOtpDto) {
+  return this.auth.verifyRegisterOtp(dto.email, dto.code);
+}
+
+ @Post("resend-otp")
+@ApiOperation({
+  summary: "Resend verification OTP",
+  description:
+    "Public endpoint to dispatch a fresh 6-digit verification code to the specified email address.",
+})
+@ApiOkResponse({ description: "Fresh verification code sent." })
+@ApiBadRequestResponse({ type: ApiErrorResponse })
+resendOtp(@Body() dto: ResendOtpDto) {
+  return this.auth.sendOtpByEmail(dto.email);
+}
+
   @Post("login")
   @ApiOperation({
     summary: "Login",
-    description: "Email + password login. Returns a JWT and the user record.",
+    description:
+      "Email + password login. Returns a JWT and user record. If the account email is not verified, blocks access and sends a new OTP code.",
   })
   @ApiOkResponse({ type: AuthSessionResponse })
   @ApiBadRequestResponse({ type: ApiErrorResponse })
@@ -58,8 +95,7 @@ export class AuthController {
     description:
       "Accepts a Google ID token from the Flutter `google_sign_in` package, verifies it " +
       "with Google, then returns the same `{ access_token, user }` shape as regular login. " +
-      "Creates an account automatically if one does not already exist. If an account with the " +
-      "same email already exists (email+password), the Google ID is linked to it.",
+      "Google accounts are automatically treated as verified (`emailVerified: true`).",
   })
   @ApiOkResponse({ type: AuthSessionResponse })
   @ApiUnauthorizedResponse({ type: ApiErrorResponse })
@@ -89,64 +125,43 @@ export class AuthController {
     summary: "Logout (no-op)",
     description:
       "This backend uses stateless JWT — there is no server-side session to invalidate. " +
-      "The Flutter client should delete its local token on logout. This endpoint exists " +
-      "purely so Flutter calls do not result in a 404.",
+      "The Flutter client should delete its local token on logout.",
   })
   @ApiOkResponse({ description: "Always returns { ok: true }." })
   logout() {
     return { ok: true };
   }
-  @Post("forgot-password")
-@ApiOperation({
-  summary: "Forgot Password",
-  description:
-    "Generates a password reset token and sends a reset email.",
-})
-@ApiOkResponse({
-  description:
-    "Always returns success even if the email does not exist.",
-})
-forgotPassword(@Body() dto: ForgotPasswordDto) {
-  return this.auth.forgotPassword(dto.email);
-}
-@Post("reset-password")
-@ApiOperation({
-  summary: "Reset Password",
-  description:
-    "Resets a user's password using a valid reset token.",
-})
-@ApiOkResponse({
-  description: "Password reset successful.",
-})
-@ApiBadRequestResponse({ type: ApiErrorResponse })
-resetPassword(@Body() dto: ResetPasswordDto) {
-  return this.auth.resetPassword(
-    dto.token,
-    dto.password,
-  );
-}
 
-  @Post("send-otp")
-  @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @Post("forgot-password")
   @ApiOperation({
-    summary: "Send email verification code",
-    description:
-      "Emails a 6-digit code to the signed-in user's own address, valid for 10 minutes. " +
-      "Verifying it (POST /auth/verify-otp) is required before booking or wallet top-up.",
+    summary: "Forgot Password",
+    description: "Generates a password reset token and sends a reset email.",
   })
-  @ApiOkResponse({ description: "Code sent." })
-  @ApiUnauthorizedResponse({ type: ApiErrorResponse })
-  sendOtp(@CurrentUser() user: AuthenticatedUser) {
-    return this.auth.sendOtp(user.id);
+  @ApiOkResponse({
+    description: "Always returns success even if the email does not exist.",
+  })
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Post("reset-password")
+  @ApiOperation({
+    summary: "Reset Password",
+    description: "Resets a user's password using a valid reset token.",
+  })
+  @ApiOkResponse({ description: "Password reset successful." })
+  @ApiBadRequestResponse({ type: ApiErrorResponse })
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto.token, dto.password);
   }
 
   @Post("verify-otp")
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: "Verify email with OTP code",
-    description: "Checks the code sent by POST /auth/send-otp and marks the account emailVerified.",
+    summary: "Verify email with OTP code (Authenticated)",
+    description:
+      "Checks the code sent by POST /auth/send-otp and marks the account emailVerified.",
   })
   @ApiOkResponse({ description: "Email verified." })
   @ApiBadRequestResponse({ type: ApiErrorResponse })
@@ -155,69 +170,3 @@ resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.verifyOtp(user.id, dto.code);
   }
 }
-
-
-
-// import { Body, Controller, Post } from '@nestjs/common';
-// import {
-//   ApiBadRequestResponse,
-//   ApiConflictResponse,
-//   ApiCreatedResponse,
-//   ApiOkResponse,
-//   ApiOperation,
-//   ApiTags,
-//   ApiUnauthorizedResponse,
-// } from '@nestjs/swagger';
-// import { AuthService } from './auth.service';
-// import { LoginDto, RegisterDto } from './dto';
-// import { ApiErrorResponse, AuthSessionResponse } from '../common/responses';
-
-// @ApiTags('Account')
-// @Controller('auth')
-// export class AuthController {
-//   constructor(private readonly auth: AuthService) {}
-
-//   @Post('register')
-//   @ApiOperation({
-//     summary: 'Register',
-//     description:
-//       "Creates a new account with the default `user` role. Higher roles are assigned by an admin via `PATCH /admin/users/:id` — never by the registrant. Returns a 30-day JWT and the user record (with the materialised permission set).",
-//   })
-//   @ApiCreatedResponse({
-//     description: 'Account created. Bearer token included in response.',
-//     type: AuthSessionResponse,
-//   })
-//   @ApiBadRequestResponse({
-//     description: 'Validation failed (e.g. malformed email, password too short).',
-//     type: ApiErrorResponse,
-//   })
-//   @ApiConflictResponse({
-//     description: 'An account with that email already exists.',
-//     type: ApiErrorResponse,
-//   })
-//   register(@Body() dto: RegisterDto) {
-//     return this.auth.register(dto);
-//   }
-
-//   @Post('login')
-//   @ApiOperation({
-//     summary: 'Login',
-//     description:
-//       'Verifies email + bcrypt password hash. Returns a JWT and the user record (with role label and materialised permission set computed from the role at request time).',
-//   })
-//   @ApiOkResponse({
-//     description: 'Authenticated successfully.',
-//     type: AuthSessionResponse,
-//   })
-//   @ApiBadRequestResponse({
-//     description: 'Validation failed.',
-//     type: ApiErrorResponse,
-//   })
-//   @ApiUnauthorizedResponse({
-//     description: 'Invalid email or password.',
-//     type: ApiErrorResponse,
-//   })
-//   login(@Body() dto: LoginDto) {
-//     return this.auth.login(dto);
-//   }
-// }
