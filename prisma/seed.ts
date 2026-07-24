@@ -504,9 +504,20 @@ async function seedToursAndGuides(prisma: PrismaClient): Promise<void> {
     },
   ];
 
-  await prisma.guide.deleteMany();
+  // Scoped to userId: null — self-registered guides (POST /guides/apply)
+  // have a userId and must survive a reseed, same reasoning as the Vendor
+  // scoping below. Guide has no unique slug to upsert on, so demo rows are
+  // matched by fullName instead — update in place if seedTestAccounts has
+  // already linked a userId onto one (e.g. Patrick Habimana), otherwise
+  // recreate fresh.
+  await prisma.guide.deleteMany({ where: { userId: null } });
   for (const g of guideDefs) {
-    await prisma.guide.create({ data: g });
+    const existing = await prisma.guide.findFirst({ where: { fullName: g.fullName } });
+    if (existing) {
+      await prisma.guide.update({ where: { id: existing.id }, data: g });
+    } else {
+      await prisma.guide.create({ data: g });
+    }
   }
   console.log(`Seeded Guide: ${guideDefs.length} created.`);
 }
@@ -560,27 +571,121 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
       city: 'Musanze',
       isVerified: true,
       rating: 4.6,
-      products: [],
+      products: [
+        { slug: 'fvl-standard-room', title: 'Standard Room', description: 'Queen bed, garden view, en-suite bathroom.', priceCents: 6000, category: 'room', images: [], inventory: 6 },
+        { slug: 'fvl-volcano-suite', title: 'Volcano View Suite', description: 'King bed, private balcony facing the Virunga range.', priceCents: 11000, category: 'room', images: [], inventory: 2 },
+      ],
     },
   ];
 
+  // Scoped to ownerId: null — self-registered vendors (POST /vendors/apply,
+  // e.g. a hotel owner's real property) have an ownerId and must survive a
+  // reseed. Product is scoped the same way via its vendor relation so a
+  // self-registered hotel's room types aren't dropped along with the demo
+  // shop's Order/OrderItem history (those are always tied to demo — i.e.
+  // ownerId: null — vendors, never to a self-registered one).
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.vendor.deleteMany();
+  await prisma.product.deleteMany({ where: { vendor: { ownerId: null } } });
+  await prisma.vendor.deleteMany({ where: { ownerId: null } });
 
   for (const v of vendorDefs) {
     const { products, ...vendorData } = v;
-    const vendor = await prisma.vendor.create({ data: vendorData });
+    // upsert, not create — once seedTestAccounts links an ownerId onto one
+    // of these (e.g. Five Volcanoes Lodge), the deleteMany above stops
+    // touching it, so a blind create() here would hit the unique slug
+    // constraint on the second run.
+    const vendor = await prisma.vendor.upsert({
+      where: { slug: v.slug },
+      update: vendorData,
+      create: vendorData,
+    });
     for (const p of products) {
-      await prisma.product.create({
-        data: { ...p, vendorId: vendor.id },
+      await prisma.product.upsert({
+        where: { slug: p.slug },
+        update: { ...p, vendorId: vendor.id },
+        create: { ...p, vendorId: vendor.id },
       });
     }
   }
   console.log(
     `Seeded Vendor: ${vendorDefs.length} with ${vendorDefs.reduce((a, v) => a + v.products.length, 0)} products.`,
   );
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+//  Test accounts — one per role the frontend gates on, pre-verified (no
+//  inbox exists for these, so emailVerified is set directly instead of
+//  going through the real OTP flow) and linked to a real directory row so
+//  their dashboards show non-empty data instead of an empty state.
+// ═════════════════════════════════════════════════════════════════════════
+
+const SEED_TEST_ACCOUNTS = [
+  {
+    email: 'tourist@yoguide.app',
+    password: 'Tourist#2026',
+    fullName: 'Test Tourist',
+    roleKey: 'user',
+  },
+  {
+    email: 'guide@yoguide.app',
+    password: 'Guide#2026',
+    fullName: 'Test Guide',
+    roleKey: 'tour',
+    linkGuideFullName: 'Patrick Habimana',
+  },
+  {
+    email: 'hotelowner@yoguide.app',
+    password: 'Hotel#2026',
+    fullName: 'Test Hotel Owner',
+    roleKey: 'hotel_manager',
+    linkVendorSlug: 'five-volcanoes-lodge',
+  },
+] as const;
+
+async function seedTestAccounts(prisma: PrismaClient): Promise<void> {
+  for (const acc of SEED_TEST_ACCOUNTS) {
+    let user = await prisma.user.findUnique({ where: { email: acc.email } });
+    if (!user) {
+      const passwordHash = await bcrypt.hash(acc.password, 10);
+      user = await prisma.user.create({
+        data: {
+          email: acc.email,
+          passwordHash,
+          fullName: acc.fullName,
+          roleKey: acc.roleKey,
+          emailVerified: true,
+        },
+      });
+      console.log(`Created test account: ${acc.email} / ${acc.password} (${acc.roleKey})`);
+    } else if (!user.emailVerified || user.roleKey !== acc.roleKey) {
+      // Login now blocks unverified accounts outright, so a stale run from
+      // before that change (or a manually-demoted role) would otherwise
+      // silently lock this seeded login out.
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true, roleKey: acc.roleKey },
+      });
+      console.log(`Repaired test account: ${acc.email}`);
+    }
+
+    // Guide/Vendor rows are dropped and recreated fresh by seedToursAndGuides
+    // / seedVendorsAndProducts on every run, so the link has to be
+    // re-applied each time too — it's not something create-once can cover.
+    if ('linkGuideFullName' in acc) {
+      const guide = await prisma.guide.findFirst({ where: { fullName: acc.linkGuideFullName } });
+      if (guide && guide.userId !== user.id) {
+        await prisma.guide.update({ where: { id: guide.id }, data: { userId: user.id } });
+      }
+    }
+    if ('linkVendorSlug' in acc) {
+      const vendor = await prisma.vendor.findUnique({ where: { slug: acc.linkVendorSlug } });
+      if (vendor && vendor.ownerId !== user.id) {
+        await prisma.vendor.update({ where: { id: vendor.id }, data: { ownerId: user.id } });
+      }
+    }
+  }
+  console.log(`Seeded test accounts: ${SEED_TEST_ACCOUNTS.length}.`);
 }
 
 async function main() {
@@ -594,6 +699,7 @@ async function main() {
     await seedPhrases(prisma);
     await seedToursAndGuides(prisma);
     await seedVendorsAndProducts(prisma);
+    await seedTestAccounts(prisma);
   } finally {
     await prisma.$disconnect();
   }
