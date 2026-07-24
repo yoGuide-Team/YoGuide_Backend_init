@@ -460,6 +460,7 @@ async verifyRegisterOtp(email: string, code: string): Promise<AuthSession> {
       roleLabel: user.role.label,
       permissions: user.role.permissions,
       emailVerified: user.emailVerified,
+      identityStatus: user.identityStatus,
     };
   }
 }

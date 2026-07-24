@@ -9,6 +9,8 @@ export enum NotificationType {
   LANGUAGE_SELECTED = 'language_selected',
   CITY_SELECTED     = 'city_selected',
   GENERAL           = 'general',
+  VERIFICATION_APPROVED = 'verification_approved',
+  VERIFICATION_REJECTED = 'verification_rejected',
 }
  
 export class CreateNotificationDto {

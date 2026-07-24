@@ -11,41 +11,49 @@ datasource db {
 
 /// Local user account. Email + bcrypt password hash + role pointer.
 model User {
-  id                 String              @id @default(cuid())
-  email              String              @unique
-  passwordHash       String              @default("")
-  fullName           String?
+  id                      String              @id @default(cuid())
+  email                   String              @unique
+  passwordHash            String              @default("")
+  fullName                String?
   /// Google OAuth subject id — set when the account was created via Google Sign-In.
   /// Null for email+password accounts. Unique so a Google account can only map to
   /// one user row.
-  googleId           String?             @unique
-  avatarUrl          String?
+  googleId                String?             @unique
+  avatarUrl               String?
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
-  roleKey            String              @default("user")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  cardNumber         String?
-  phone              String?
-  role               Role                @relation(fields: [roleKey], references: [key])
-  esimOrders         EsimOrder[]
-  shuttleBookings    ShuttleBooking[]
-  walletTransactions WalletTransaction[]
-  tripProfile        TripProfile?
-  eventInterest      EventInterest?
-  notifications      Notification[]
-  wallet             Wallet?
-  bookings           Booking[]
-  passwordResetToken     String?
-  passwordResetExpiresAt DateTime?
+  roleKey                 String              @default("user")
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  cardNumber              String?
+  phone                   String?
+  role                    Role                @relation(fields: [roleKey], references: [key])
+  esimOrders              EsimOrder[]
+  shuttleBookings         ShuttleBooking[]
+  walletTransactions      WalletTransaction[]
+  tripProfile             TripProfile?
+  eventInterest           EventInterest?
+  notifications           Notification[]
+  wallet                  Wallet?
+  bookings                Booking[]
+  passwordResetToken      String?
+  passwordResetExpiresAt  DateTime?
   /// Gates specific actions (booking, wallet top-up), not registration/login
   /// itself — see EmailVerifiedGuard. Same hash-and-expire pattern as
   /// passwordResetToken above, not a new mechanism.
-  emailVerified          Boolean   @default(false)
-  otpCodeHash            String?
-  otpExpiresAt           DateTime?
-  guide                  Guide?
-  vendor                 Vendor?
+  emailVerified           Boolean             @default(false)
+  otpCodeHash             String?
+  otpExpiresAt            DateTime?
+  guide                   Guide?
+  vendor                  Vendor?
+  guideCompany            GuideCompany?
+  /// Admin-approved KYC gate for yoEcoPay/Wallet — separate from
+  /// emailVerified (which only gates login). Pre-existing accounts are
+  /// backfilled to 'approved' by migration so nobody with wallet history
+  /// gets locked out retroactively; new registrations start at 'none'.
+  identityStatus          String              @default("none")
+  identityDocUrls         String[]            @default([])
+  identityRejectionReason String?
 }
 
 model WalletTransaction {
@@ -281,23 +289,33 @@ model Phrase {
 /// A bookable tour package — moto, EV-car, walking, multi-day. Each tour
 /// carries a curated list of TourStops in order.
 model Tour {
-  id              String     @id @default(cuid())
+  id              String        @id @default(cuid())
   cityId          String?
   title           String
   description     String
   vehicleType     String
   durationMinutes Int
   priceCents      Int
-  currency        String     @default("USD")
-  isCustom        Boolean    @default(false)
+  currency        String        @default("USD")
+  isCustom        Boolean       @default(false)
   coverImage      String?
-  highlights      String[]   @default([])
-  isPublished     Boolean    @default(true)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  city            City?      @relation(fields: [cityId], references: [id])
+  highlights      String[]      @default([])
+  isPublished     Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  city            City?         @relation(fields: [cityId], references: [id])
   stops           TourStop[]
   bookings        Booking[]
+  /// Package ownership — a tour may belong to a self-employed guide, a
+  /// guide company, or neither (admin-created). Never both at once in
+  /// practice, but not DB-enforced — application code assigns exactly one.
+  guideId         String?
+  guide           Guide?        @relation(fields: [guideId], references: [id], onDelete: SetNull)
+  companyId       String?
+  company         GuideCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([guideId])
+  @@index([companyId])
 }
 
 model TourStop {
@@ -315,7 +333,6 @@ model TourStop {
 
   @@unique([tourId, ordinal])
 }
-
 
 /// A platform guide. Public profile lives here; document verification
 /// records sit on a separate `GuideDocument` table.
@@ -345,6 +362,18 @@ model Guide {
   updatedAt       DateTime        @updatedAt
   documents       GuideDocument[]
   bookings        Booking[]
+  packages        Tour[]
+  /// Verification lifecycle — 'isVerified' above is kept in sync
+  /// (isVerified = status === 'approved') for back-compat with existing
+  /// readers; status/rejectionReason are the source of truth going forward.
+  status          String          @default("pending")
+  rejectionReason String?
+  /// Nullable — a guide may be self-employed (null) or work under a
+  /// verified Guide Company.
+  companyId       String?
+  company         GuideCompany?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
 }
 
 model GuideDocument {
@@ -450,33 +479,37 @@ model Message {
 /// A platform-listed business: shop, hotel, tour operator, transport.
 /// Products and (eventually) bookable inventory tie back to a vendor.
 model Vendor {
-  id          String    @id @default(cuid())
-  slug        String    @unique
-  name        String
-  category    String
-  description String?
-  contact     String?
-  email       String?
-  phone       String?
-  website     String?
-  city        String?
-  isVerified  Boolean   @default(false)
-  isActive    Boolean   @default(true)
-  rating      Float     @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  products    Product[]
+  id              String    @id @default(cuid())
+  slug            String    @unique
+  name            String
+  category        String
+  description     String?
+  contact         String?
+  email           String?
+  phone           String?
+  website         String?
+  city            String?
+  isVerified      Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  rating          Float     @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  products        Product[]
   /// Set when a user self-applies via POST /vendors/apply — admin-created
   /// vendors (POST /admin/vendors) have no linked owner account.
-  ownerId      String?  @unique
-  owner        User?    @relation(fields: [ownerId], references: [id])
+  ownerId         String?   @unique
+  owner           User?     @relation(fields: [ownerId], references: [id])
   /// Tourist-facing hotel-browsing fields (HotelListPage/HotelDetailPage).
-  address      String?
-  amenities    String[] @default([])
-  checkInTime  String?
-  checkOutTime String?
-  bookings     Booking[]
-  reviews      Review[]
+  address         String?
+  amenities       String[]  @default([])
+  checkInTime     String?
+  checkOutTime    String?
+  bookings        Booking[]
+  reviews         Review[]
+  /// Verification lifecycle — see Guide's identical comment for the
+  /// isVerified/status sync convention.
+  status          String    @default("pending")
+  rejectionReason String?
 }
 
 /// Souvenirs, accommodation packages, anything saleable.
@@ -556,4 +589,48 @@ model AnalyticsEvent {
 
   @@index([name])
   @@index([userId])
+}
+
+/// A registered guide-tour business — the doc's "Guide Company" role.
+/// Owns Guides (companyId), Tours/"packages" (companyId), and Vehicles.
+/// Same self-registration + admin-verify lifecycle as Vendor/Guide.
+model GuideCompany {
+  id              String    @id @default(cuid())
+  /// Set when a user self-applies via POST /guide-companies/apply —
+  /// admin-created companies have no linked owner account.
+  ownerId         String?   @unique
+  owner           User?     @relation(fields: [ownerId], references: [id])
+  slug            String    @unique
+  name            String
+  description     String?
+  contact         String?
+  email           String?
+  phone           String?
+  website         String?
+  city            String?
+  status          String    @default("pending")
+  rejectionReason String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  guides          Guide[]
+  packages        Tour[]
+  vehicles        Vehicle[]
+}
+
+/// A company-owned vehicle — has no independent existence outside its
+/// owning company, unlike Guide/Tour which may be ownerless.
+model Vehicle {
+  id          String       @id @default(cuid())
+  companyId   String
+  company     GuideCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type        String
+  label       String
+  plateNumber String?
+  seats       Int?
+  photoUrl    String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([companyId])
 }

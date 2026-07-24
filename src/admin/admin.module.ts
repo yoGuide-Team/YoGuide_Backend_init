@@ -8,8 +8,11 @@ import { AdminStatsController } from './admin-stats.controller';
 import { AdminAuditController } from './admin-audit.controller';
 import { PlacesService } from '../places/places.service';
 import { BookingsService } from '../bookings/bookings.service';
+import { AuditModule } from '../audit/audit.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
+  imports: [AuditModule, NotificationsModule],
   controllers: [
     AdminUsersController,
     AdminRolesController,

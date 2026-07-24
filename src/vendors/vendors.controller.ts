@@ -29,8 +29,15 @@ import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AuditLogService } from '../audit/audit-log.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 
 const VENDOR_CATEGORIES = ['hotel', 'restaurant', 'shop', 'operator', 'transport'] as const;
+// Deliberately excludes 'pending' (initial, system-set) and 'refunded'
+// (wallet-transaction-linked, stays admin/force-refund-only) — matches
+// BookingsService's real VALID_STATUSES set.
+const HOTEL_MANAGEABLE_STATUSES = ['confirmed', 'completed', 'cancelled'] as const;
 
 function slugify(name: string): string {
   return name
@@ -53,6 +60,9 @@ class CreateVendorDto {
   @IsOptional() @IsString() city?: string;
 }
 
+/** isVerified/status/rejectionReason are deliberately absent — routing every
+ * verification-state change exclusively through verify()/reject() avoids a
+ * second, silent way to desync isVerified from status. */
 class UpdateVendorDto {
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsIn(VENDOR_CATEGORIES) category?: string;
@@ -63,7 +73,14 @@ class UpdateVendorDto {
   @IsOptional() @IsString() website?: string;
   @IsOptional() @IsString() city?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
-  @IsOptional() @IsBoolean() isVerified?: boolean;
+}
+
+class RejectVendorDto {
+  @IsString() @MinLength(3) reason!: string;
+}
+
+class UpdateBookingStatusDto {
+  @IsIn(HOTEL_MANAGEABLE_STATUSES) status!: string;
 }
 
 class ApplyVendorDto {
@@ -162,7 +179,29 @@ export class VendorsController {
   async apply(@CurrentUser() user: AuthenticatedUser, @Body() dto: ApplyVendorDto) {
     const existing = await this.prisma.vendor.findUnique({ where: { ownerId: user.id } });
     if (existing) {
-      throw new BadRequestException('You already have a vendor application on file.');
+      if (existing.status !== 'rejected') {
+        throw new BadRequestException('You already have a vendor application on file.');
+      }
+      // Resubmission after rejection — update in place instead of erroring.
+      return this.prisma.vendor.update({
+        where: { id: existing.id },
+        data: {
+          name: dto.name,
+          description: dto.description,
+          contact: dto.contact,
+          email: dto.email,
+          phone: dto.phone,
+          website: dto.website,
+          city: dto.city,
+          address: dto.address,
+          amenities: dto.amenities ?? [],
+          checkInTime: dto.checkInTime,
+          checkOutTime: dto.checkOutTime,
+          status: 'pending',
+          rejectionReason: null,
+          isVerified: false,
+        },
+      });
     }
     let slug = slugify(dto.name);
     if (await this.prisma.vendor.findUnique({ where: { slug } })) {
@@ -185,6 +224,7 @@ export class VendorsController {
         checkInTime: dto.checkInTime,
         checkOutTime: dto.checkOutTime,
         isVerified: false,
+        status: 'pending',
       },
     });
   }
@@ -224,6 +264,27 @@ export class VendorsController {
       orderBy: { createdAt: 'desc' },
       include: { user: { select: { email: true, fullName: true } } },
     });
+  }
+
+  @Patch('me/bookings/:id/status')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update a booking status — hotel-manager subset',
+    description: `Restricted to ${HOTEL_MANAGEABLE_STATUSES.join(' | ')}. Must belong to the signed-in user's vendor. 'pending' (system-set) and 'refunded' (wallet-linked) stay out of hotel-manager reach — use the admin endpoint for those.`,
+  })
+  async updateMyBookingStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateBookingStatusDto,
+  ) {
+    const vendor = await this.prisma.vendor.findUnique({ where: { ownerId: user.id } });
+    if (!vendor) throw new NotFoundException('No vendor application found for this account.');
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking || booking.vendorId !== vendor.id) {
+      throw new NotFoundException('Booking not found on your vendor.');
+    }
+    return this.prisma.booking.update({ where: { id }, data: { status: dto.status } });
   }
 
   @Get('me/products')
@@ -327,7 +388,12 @@ export class VendorsController {
 @Controller('admin/vendors')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminVendorsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditLogService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   @Get()
   @RequirePermissions('vendors.read')
@@ -359,19 +425,63 @@ export class AdminVendorsController {
     description:
       "If the vendor is linked to a user account (self-applied via POST /vendors/apply), also promotes that user's role to `hotel_manager` so /hotel-owner becomes reachable for them.",
   })
-  async verify(@Param('slug') slug: string) {
+  async verify(@Param('slug') slug: string, @CurrentUser() actor: AuthenticatedUser) {
     const v = await this.prisma.vendor.findUnique({ where: { slug } });
     if (!v) throw new NotFoundException('Vendor not found.');
     const updated = await this.prisma.vendor.update({
       where: { slug },
-      data: { isVerified: true },
+      data: { isVerified: true, status: 'approved', rejectionReason: null },
     });
     if (v.ownerId) {
       await this.prisma.user.update({
         where: { id: v.ownerId },
         data: { roleKey: 'hotel_manager' },
       });
+      const owner = await this.prisma.user.findUnique({ where: { id: v.ownerId } });
+      if (owner) {
+        await this.notifications.notifyVerificationApproved(owner.id, 'hotel');
+        await this.mail.sendApplicationStatusEmail(owner.email, owner.fullName ?? 'there', 'hotel', 'approved');
+      }
     }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'vendor.verify',
+      entity: 'Vendor',
+      entityId: v.id,
+    });
+    return updated;
+  }
+
+  @Post(':slug/reject')
+  @RequirePermissions('vendors.write')
+  @ApiOperation({ summary: 'Reject vendor application with a reason' })
+  async reject(
+    @Param('slug') slug: string,
+    @Body() dto: RejectVendorDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    const v = await this.prisma.vendor.findUnique({ where: { slug } });
+    if (!v) throw new NotFoundException('Vendor not found.');
+    const updated = await this.prisma.vendor.update({
+      where: { slug },
+      data: { isVerified: false, status: 'rejected', rejectionReason: dto.reason },
+    });
+    if (v.ownerId) {
+      const owner = await this.prisma.user.findUnique({ where: { id: v.ownerId } });
+      if (owner) {
+        await this.notifications.notifyVerificationRejected(owner.id, 'hotel', dto.reason);
+        await this.mail.sendApplicationStatusEmail(owner.email, owner.fullName ?? 'there', 'hotel', 'rejected', dto.reason);
+      }
+    }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'vendor.reject',
+      entity: 'Vendor',
+      entityId: v.id,
+      metadata: { reason: dto.reason },
+    });
     return updated;
   }
 

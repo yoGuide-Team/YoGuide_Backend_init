@@ -5,6 +5,7 @@ import { AuthService } from "./auth.service";
 import { AuthController } from "./auth.controller";
 import { AuthGuard } from "./auth.guard";
 import { PermissionsGuard } from "./permissions.guard";
+import { IdentityVerifiedGuard } from "./identity-verified.guard";
 
 @Global()
 @Module({
@@ -22,8 +23,8 @@ import { PermissionsGuard } from "./permissions.guard";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthGuard, PermissionsGuard],
-  exports: [AuthService, AuthGuard, PermissionsGuard],
+  providers: [AuthService, AuthGuard, PermissionsGuard, IdentityVerifiedGuard],
+  exports: [AuthService, AuthGuard, PermissionsGuard, IdentityVerifiedGuard],
 })
 export class AuthModule {}
 

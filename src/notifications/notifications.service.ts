@@ -92,4 +92,26 @@ export class NotificationsService {
       type:  NotificationType.CITY_SELECTED,
     }).catch((e) => this.logger.warn(`notifyCitySelected: ${e.message}`));
   }
+
+  /** Called by guide/vendor/guide-company/identity :id/verify endpoints */
+  async notifyVerificationApproved(userId: string, entityType: string) {
+    await this.create({
+      userId,
+      title: '✅ Application Approved',
+      body:  `Your ${entityType} application has been approved.`,
+      type:  NotificationType.VERIFICATION_APPROVED,
+      metadata: JSON.stringify({ entityType }),
+    }).catch((e) => this.logger.warn(`notifyVerificationApproved: ${e.message}`));
+  }
+
+  /** Called by guide/vendor/guide-company/identity :id/reject endpoints */
+  async notifyVerificationRejected(userId: string, entityType: string, reason: string) {
+    await this.create({
+      userId,
+      title: '❌ Application Rejected',
+      body:  `Your ${entityType} application was rejected: ${reason}`,
+      type:  NotificationType.VERIFICATION_REJECTED,
+      metadata: JSON.stringify({ entityType, reason }),
+    }).catch((e) => this.logger.warn(`notifyVerificationRejected: ${e.message}`));
+  }
 }

@@ -7,6 +7,9 @@ export interface AuthenticatedUser {
   /// Materialised permission set for this request. `*` means superuser.
   permissions: string[];
   emailVerified: boolean;
+  /// Admin-approved KYC gate for yoEcoPay/Wallet — 'none'|'pending'|'approved'|'rejected'.
+  /// Separate from emailVerified, which only gates login.
+  identityStatus: string;
 }
 
 /// Returns true if the user's permission set satisfies the required

@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AuditLogService } from '../audit/audit-log.service';
 
 class WalletAdjustmentDto {
   @IsInt()
@@ -32,7 +35,10 @@ class WalletAdjustmentDto {
 @Controller('admin/wallets')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminWalletsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditLogService,
+  ) {}
 
   @Get()
   @RequirePermissions('wallets.read')
@@ -101,6 +107,7 @@ export class AdminWalletsController {
   async adjust(
     @Param('userId') userId: string,
     @Body() dto: WalletAdjustmentDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
     if (dto.amountCents === 0) {
       throw new BadRequestException('amountCents must be non-zero.');
@@ -129,6 +136,14 @@ export class AdminWalletsController {
         where: { id: wallet.id },
         data: { balanceCents: { increment: dto.amountCents } },
       });
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'wallet.adjust',
+      entity: 'Wallet',
+      entityId: userId,
+      metadata: { amountCents: dto.amountCents, kind: dto.kind, notes: dto.notes },
     });
     // Read post-commit so the response reflects the new balance.
     return this.findOne(userId);

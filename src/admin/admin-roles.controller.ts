@@ -25,6 +25,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AuditLogService } from '../audit/audit-log.service';
 
 const ROLE_KEY_PATTERN = /^[a-z][a-z0-9_]*$/;
 
@@ -68,7 +71,10 @@ export class UpdateRoleDto {
 @Controller('admin/roles')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminRolesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditLogService,
+  ) {}
 
   @Get()
   @RequirePermissions('roles.read')
@@ -100,7 +106,7 @@ export class AdminRolesController {
     description:
       "Adds a custom (non-system) role. The 'liquid' guarantee — adding a `hotel_manager` or `airline_partner` role is an INSERT, not a code change.",
   })
-  async create(@Body() dto: CreateRoleDto) {
+  async create(@Body() dto: CreateRoleDto, @CurrentUser() actor: AuthenticatedUser) {
     const exists = await this.prisma.role.findUnique({ where: { key: dto.key } });
     if (exists) throw new ConflictException(`Role '${dto.key}' already exists.`);
     const created = await this.prisma.role.create({
@@ -110,6 +116,14 @@ export class AdminRolesController {
         permissions: dto.permissions,
         isSystem: false,
       },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'role.create',
+      entity: 'Role',
+      entityId: created.key,
+      metadata: { label: dto.label, permissions: dto.permissions },
     });
     return {
       key: created.key,
@@ -127,7 +141,11 @@ export class AdminRolesController {
     description:
       "Edit label and/or permissions. Permission changes apply immediately — every authenticated request re-fetches its user's role on hit.",
   })
-  async update(@Param('key') key: string, @Body() dto: UpdateRoleDto) {
+  async update(
+    @Param('key') key: string,
+    @Body() dto: UpdateRoleDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
     const role = await this.prisma.role.findUnique({ where: { key } });
     if (!role) throw new NotFoundException(`Role '${key}' not found.`);
     const updated = await this.prisma.role.update({
@@ -136,6 +154,14 @@ export class AdminRolesController {
         label: dto.label ?? undefined,
         permissions: dto.permissions ?? undefined,
       },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'role.update',
+      entity: 'Role',
+      entityId: key,
+      metadata: { label: dto.label, permissions: dto.permissions },
     });
     return {
       key: updated.key,
@@ -153,7 +179,7 @@ export class AdminRolesController {
     description:
       "Removes a non-system role with no users assigned. Returns 400 if either guard is violated.",
   })
-  async remove(@Param('key') key: string) {
+  async remove(@Param('key') key: string, @CurrentUser() actor: AuthenticatedUser) {
     const role = await this.prisma.role.findUnique({ where: { key } });
     if (!role) throw new NotFoundException(`Role '${key}' not found.`);
     if (role.isSystem) {
@@ -166,6 +192,13 @@ export class AdminRolesController {
       );
     }
     await this.prisma.role.delete({ where: { key } });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'role.delete',
+      entity: 'Role',
+      entityId: key,
+    });
     return { ok: true };
   }
 

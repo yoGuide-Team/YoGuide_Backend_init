@@ -16,6 +16,7 @@ import { ItinerariesModule } from './itineraries/itineraries.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MessagesModule } from './messages/messages.module';
 import { VendorsModule } from './vendors/vendors.module';
+import { GuideCompaniesModule } from './guide-companies/guide-companies.module';
 import { ProductsModule } from './products/products.module';
 import { OrdersModule } from './orders/orders.module';
 import { EventsModule } from './events/events.module';
@@ -47,6 +48,7 @@ import { MailModule } from './mail/main.module';
     NotificationsModule,
     MessagesModule,
     VendorsModule,
+    GuideCompaniesModule,
     ProductsModule,
     OrdersModule,
     EventsModule,

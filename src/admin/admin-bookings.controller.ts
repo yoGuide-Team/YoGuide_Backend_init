@@ -17,6 +17,9 @@ import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { BookingsService } from '../bookings/bookings.service';
+import { CurrentUser } from '../auth/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AuditLogService } from '../audit/audit-log.service';
 
 class UpdateBookingStatusDto {
   @ApiProperty({
@@ -68,6 +71,7 @@ export class AdminBookingsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bookings: BookingsService,
+    private readonly audit: AuditLogService,
   ) {}
 
   @Get()
@@ -120,6 +124,7 @@ export class AdminBookingsController {
   async updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateBookingStatusDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
     this.bookings.validateStatus(dto.status);
     const exists = await this.prisma.booking.findUnique({ where: { id } });
@@ -127,6 +132,14 @@ export class AdminBookingsController {
     await this.prisma.booking.update({
       where: { id },
       data: { status: dto.status, notes: dto.notes ?? undefined },
+    });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'booking.status_update',
+      entity: 'Booking',
+      entityId: id,
+      metadata: { status: dto.status },
     });
     return this.findOne(id);
   }
@@ -158,8 +171,12 @@ export class AdminBookingsController {
   @Post(':id/force-refund')
   @RequirePermissions('bookings.write')
   @ApiOperation({ summary: 'Force refund', description: 'Operator-driven refund. If `method=wallet`, the wallet is credited atomically. Otherwise a settled refund transaction is recorded for the operator-side payment trail.' })
-  async forceRefund(@Param('id') id: string, @Body() dto: ForceRefundDto) {
-    return this.prisma.$transaction(async (txDb) => {
+  async forceRefund(
+    @Param('id') id: string,
+    @Body() dto: ForceRefundDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    const result = await this.prisma.$transaction(async (txDb) => {
       const booking = await txDb.booking.findUnique({ where: { id } });
       if (!booking) throw new NotFoundException('Booking not found.');
 
@@ -223,5 +240,14 @@ export class AdminBookingsController {
       });
       return this.bookings.toDto(refreshed);
     });
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'booking.force_refund',
+      entity: 'Booking',
+      entityId: id,
+      metadata: { amountCents: dto.amountCents, method: dto.method },
+    });
+    return result;
   }
 }

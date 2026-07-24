@@ -61,4 +61,42 @@ export class MailService {
       this.logger.error(`Failed to send OTP email to ${email}:`, error);
     }
   }
+
+  /** Sent by every :id/verify and :id/reject endpoint (guides, vendors,
+   * guide-companies, identity verification) — same best-effort pattern as
+   * sendOtpEmail: an SMTP outage must never fail the approval/rejection
+   * mutation that triggered it. */
+  async sendApplicationStatusEmail(
+    email: string,
+    name: string,
+    entityType: string,
+    status: 'approved' | 'rejected',
+    reason?: string | null,
+  ) {
+    try {
+      const isApproved = status === 'approved';
+      await this.transporter.sendMail({
+        from: `"yoGuide Team" <${process.env.GMAIL_USER}>`,
+        to: email,
+        subject: isApproved
+          ? `Your ${entityType} application was approved`
+          : `Your ${entityType} application needs changes`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+            <h2>Hello ${name},</h2>
+            ${
+              isApproved
+                ? `<p>Your ${entityType} application has been <strong style="color:#0C8A5B;">approved</strong>. You can now access the related dashboard.</p>`
+                : `<p>Your ${entityType} application was <strong style="color:#B42318;">rejected</strong>.</p>
+                   <p>Reason: ${reason ?? 'No reason provided.'}</p>
+                   <p>You're welcome to update your details and resubmit.</p>`
+            }
+          </div>
+        `,
+      });
+      this.logger.log(`Application status (${status}) email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send application status email to ${email}:`, error);
+    }
+  }
 }

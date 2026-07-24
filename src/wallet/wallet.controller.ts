@@ -12,6 +12,7 @@ import {
 import { IsIn, IsInt, Min } from 'class-validator';
 import { WalletService } from './wallet.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { IdentityVerifiedGuard } from '../auth/identity-verified.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { ApiErrorResponse, WalletResponse } from '../common/responses';
@@ -49,10 +50,11 @@ export class WalletController {
   }
 
   @Post('topup')
+  @UseGuards(IdentityVerifiedGuard)
   @ApiOperation({
     summary: 'Top up wallet (mock)',
     description:
-      "Records a settled top-up transaction and credits the wallet. Mock for now — replace with a Flutterwave / MoMo callback once payment processors are integrated. Real processors will hit a `/webhooks/*` endpoint instead of being driven by the client.",
+      "Records a settled top-up transaction and credits the wallet. Mock for now — replace with a Flutterwave / MoMo callback once payment processors are integrated. Real processors will hit a `/webhooks/*` endpoint instead of being driven by the client. Requires admin-approved identity verification (POST /me/identity-verification) — the doc's \"yoEcoPay and Wallet require identity verification\" rule.",
   })
   @ApiCreatedResponse({ description: 'Wallet after the top-up.', type: WalletResponse })
   @ApiBadRequestResponse({ description: 'Validation failed.', type: ApiErrorResponse })

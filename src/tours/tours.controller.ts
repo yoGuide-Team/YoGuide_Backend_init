@@ -42,6 +42,10 @@ class CreateTourDto {
   @IsOptional() @IsString() coverImage?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) highlights?: string[];
   @IsOptional() @IsBoolean() isPublished?: boolean;
+  /** Assign ownership at creation — matches the "Admin=Manage" row in the
+   * permission matrix (admin can create AND assign, not just create ownerless). */
+  @IsOptional() @IsString() guideId?: string;
+  @IsOptional() @IsString() companyId?: string;
 }
 
 class UpdateTourDto {
@@ -54,6 +58,8 @@ class UpdateTourDto {
   @IsOptional() @IsString() coverImage?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) highlights?: string[];
   @IsOptional() @IsBoolean() isPublished?: boolean;
+  @IsOptional() @IsString() guideId?: string;
+  @IsOptional() @IsString() companyId?: string;
 }
 
 class TourStopDto {

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { AdminGuidesController, GuidesController } from './guides.controller';
+import { AdminGuideCompaniesController, GuideCompaniesController } from './guide-companies.controller';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [AuditModule, NotificationsModule],
-  controllers: [GuidesController, AdminGuidesController],
+  controllers: [GuideCompaniesController, AdminGuideCompaniesController],
 })
-export class GuidesModule {}
+export class GuideCompaniesModule {}

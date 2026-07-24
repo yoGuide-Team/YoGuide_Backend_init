@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -29,6 +30,14 @@ import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AuditLogService } from '../audit/audit-log.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
+
+// Same set AdminToursController's CreateTourDto validates against
+// (src/tours/tours.controller.ts) — packages created here are plain Tour
+// rows, so they must satisfy the same constraint.
+const PACKAGE_VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
 
 class ApplyGuideDto {
   @IsString() @MinLength(2) fullName!: string;
@@ -73,6 +82,23 @@ class UploadDocumentDto {
 class ReviewDocumentDto {
   @IsIn(['approved', 'rejected']) status!: string;
   @IsOptional() @IsString() notes?: string;
+}
+
+class RejectGuideDto {
+  @IsString() @MinLength(3) reason!: string;
+}
+
+class UpsertPackageDto {
+  @IsString() @MinLength(3) title!: string;
+  @IsString() @MinLength(10) description!: string;
+  @IsIn(PACKAGE_VEHICLE_TYPES) vehicleType!: string;
+  @IsInt() @Min(15) durationMinutes!: number;
+  @IsInt() @Min(0) priceCents!: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() cityId?: string;
+  @IsOptional() @IsString() coverImage?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) highlights?: string[];
+  @IsOptional() @IsBoolean() isPublished?: boolean;
 }
 
 @ApiTags('Public · Guides')
@@ -122,7 +148,24 @@ export class GuidesController {
   async apply(@CurrentUser() user: AuthenticatedUser, @Body() dto: ApplyGuideDto) {
     const existing = await this.prisma.guide.findUnique({ where: { userId: user.id } });
     if (existing) {
-      throw new BadRequestException('You already have a guide application on file.');
+      if (existing.status !== 'rejected') {
+        throw new BadRequestException('You already have a guide application on file.');
+      }
+      // Resubmission after rejection — update in place instead of erroring.
+      return this.prisma.guide.update({
+        where: { id: existing.id },
+        data: {
+          fullName: dto.fullName,
+          bio: dto.bio,
+          specialties: dto.specialties ?? [],
+          languages: dto.languages ?? [],
+          yearsExperience: dto.yearsExperience ?? 0,
+          city: dto.city,
+          status: 'pending',
+          rejectionReason: null,
+          isVerified: false,
+        },
+      });
     }
     return this.prisma.guide.create({
       data: {
@@ -134,6 +177,7 @@ export class GuidesController {
         yearsExperience: dto.yearsExperience ?? 0,
         city: dto.city,
         isVerified: false,
+        status: 'pending',
       },
     });
   }
@@ -163,6 +207,69 @@ export class GuidesController {
         place: { select: { name: true } },
       },
     });
+  }
+
+  @Get('me/packages')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Packages (Tours) owned by the signed-in user's guide profile" })
+  async myPackages(@CurrentUser() user: AuthenticatedUser) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    return this.prisma.tour.findMany({
+      where: { guideId: guide.id },
+      orderBy: { createdAt: 'desc' },
+      include: { stops: { orderBy: { ordinal: 'asc' } } },
+    });
+  }
+
+  @Post('me/packages')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a package under the signed-in user\'s guide profile (requires an approved guide)' })
+  async createMyPackage(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPackageDto) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    if (guide.status !== 'approved') {
+      throw new ForbiddenException('Your guide application must be approved before you can publish packages.');
+    }
+    return this.prisma.tour.create({
+      data: { ...dto, guideId: guide.id, highlights: dto.highlights ?? [] },
+      include: { stops: true },
+    });
+  }
+
+  @Patch('me/packages/:id')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update a package — must belong to the signed-in user's guide profile" })
+  async updateMyPackage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: Partial<UpsertPackageDto>,
+  ) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    const tour = await this.prisma.tour.findUnique({ where: { id } });
+    if (!tour || tour.guideId !== guide.id) {
+      throw new NotFoundException('Package not found on your guide profile.');
+    }
+    return this.prisma.tour.update({ where: { id }, data: dto });
+  }
+
+  @Delete('me/packages/:id')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete a package — must belong to the signed-in user's guide profile" })
+  async deleteMyPackage(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    const tour = await this.prisma.tour.findUnique({ where: { id } });
+    if (!tour || tour.guideId !== guide.id) {
+      throw new NotFoundException('Package not found on your guide profile.');
+    }
+    await this.prisma.tour.delete({ where: { id } });
+    return { ok: true };
   }
 
   @Get(':id')
@@ -209,7 +316,12 @@ export class GuidesController {
 @Controller('admin/guides')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class AdminGuidesController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditLogService,
+    private readonly notifications: NotificationsService,
+    private readonly mail: MailService,
+  ) {}
 
   @Get()
   @RequirePermissions('guides.read')
@@ -266,19 +378,63 @@ export class AdminGuidesController {
     description:
       "If the guide is linked to a user account (self-applied via POST /guides/apply), also promotes that user's role to `tour` so /guide-dashboard becomes reachable for them.",
   })
-  async verify(@Param('id') id: string) {
+  async verify(@Param('id') id: string, @CurrentUser() actor: AuthenticatedUser) {
     const exists = await this.prisma.guide.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException(`Guide '${id}' not found.`);
     const updated = await this.prisma.guide.update({
       where: { id },
-      data: { isVerified: true },
+      data: { isVerified: true, status: 'approved', rejectionReason: null },
     });
     if (exists.userId) {
       await this.prisma.user.update({
         where: { id: exists.userId },
         data: { roleKey: 'tour' },
       });
+      const owner = await this.prisma.user.findUnique({ where: { id: exists.userId } });
+      if (owner) {
+        await this.notifications.notifyVerificationApproved(owner.id, 'guide');
+        await this.mail.sendApplicationStatusEmail(owner.email, owner.fullName ?? 'there', 'guide', 'approved');
+      }
     }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'guide.verify',
+      entity: 'Guide',
+      entityId: id,
+    });
+    return updated;
+  }
+
+  @Post(':id/reject')
+  @RequirePermissions('guides.write')
+  @ApiOperation({ summary: 'Reject guide application with a reason' })
+  async reject(
+    @Param('id') id: string,
+    @Body() dto: RejectGuideDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    const exists = await this.prisma.guide.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException(`Guide '${id}' not found.`);
+    const updated = await this.prisma.guide.update({
+      where: { id },
+      data: { isVerified: false, status: 'rejected', rejectionReason: dto.reason },
+    });
+    if (exists.userId) {
+      const owner = await this.prisma.user.findUnique({ where: { id: exists.userId } });
+      if (owner) {
+        await this.notifications.notifyVerificationRejected(owner.id, 'guide', dto.reason);
+        await this.mail.sendApplicationStatusEmail(owner.email, owner.fullName ?? 'there', 'guide', 'rejected', dto.reason);
+      }
+    }
+    await this.audit.log({
+      actorId: actor.id,
+      actorEmail: actor.email,
+      action: 'guide.reject',
+      entity: 'Guide',
+      entityId: id,
+      metadata: { reason: dto.reason },
+    });
     return updated;
   }
 

@@ -80,6 +80,16 @@ const SYSTEM_ROLES: SeedRole[] = [
     ],
     isSystem: false,
   },
+  {
+    key: 'guide_company',
+    label: 'Guide Company',
+    permissions: [
+      'admin.panel.access',
+      'places.read.admin',
+      'bookings.read',
+    ],
+    isSystem: false,
+  },
 ];
 
 const DEFAULT_ADMIN = {
@@ -614,6 +624,69 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════
+//  Guide companies, company-owned guides + vehicles
+// ═════════════════════════════════════════════════════════════════════════
+
+async function seedGuideCompanies(prisma: PrismaClient): Promise<void> {
+  const companyDef = {
+    slug: 'kivu-adventure-tours',
+    name: 'Kivu Adventure Tours',
+    description: 'A licensed tour operator running multi-guide moto and boat excursions out of Gisenyi.',
+    contact: '+250 788 000 111',
+    email: 'contact@kivuadventuretours.rw',
+    phone: '+250 788 000 111',
+    website: 'https://kivuadventuretours.rw',
+    city: 'Gisenyi',
+    status: 'approved',
+  };
+
+  const company = await prisma.guideCompany.upsert({
+    where: { slug: companyDef.slug },
+    update: companyDef,
+    create: companyDef,
+  });
+
+  // Company-owned guides have userId: null (no personal login of their
+  // own), same as the demo self-employed guides above — the deleteMany in
+  // seedToursAndGuides already wiped every userId-null Guide row this run,
+  // so these are always created fresh here rather than upserted.
+  await prisma.guide.createMany({
+    data: [
+      {
+        companyId: company.id,
+        fullName: 'Jean Bosco Nzeyimana',
+        emoji: '🚤',
+        bio: 'Company-employed boat guide for Kivu Adventure Tours.',
+        rating: 4.7, reviewCount: 34, toursCompleted: 58, responseRatePct: 94,
+        hourlyRateCents: 1100, specialties: ['Lake tours', 'Fishing trips'],
+        languages: ['English', 'French', 'Kinyarwanda'],
+        yearsExperience: 4, isVerified: true, status: 'approved', city: 'Gisenyi',
+      },
+      {
+        companyId: company.id,
+        fullName: 'Claudine Uwase',
+        emoji: '🏍️',
+        bio: 'Company-employed moto guide, Northern Province routes.',
+        rating: 4.8, reviewCount: 21, toursCompleted: 40, responseRatePct: 97,
+        hourlyRateCents: 900, specialties: ['Moto tours', 'Coffee tours'],
+        languages: ['English', 'Kinyarwanda'],
+        yearsExperience: 3, isVerified: true, status: 'approved', city: 'Gisenyi',
+      },
+    ],
+  });
+
+  await prisma.vehicle.deleteMany({ where: { companyId: company.id } });
+  await prisma.vehicle.createMany({
+    data: [
+      { companyId: company.id, type: 'boat', label: 'Lake Kivu Cruiser', seats: 8, isActive: true },
+      { companyId: company.id, type: 'motorbike', label: 'Yamaha AG200 · fleet unit 1', plateNumber: 'RAD 214 B', seats: 1, isActive: true },
+    ],
+  });
+
+  console.log('Seeded GuideCompany: 1 with 2 guides and 2 vehicles.');
+}
+
+// ═════════════════════════════════════════════════════════════════════════
 //  Test accounts — one per role the frontend gates on, pre-verified (no
 //  inbox exists for these, so emailVerified is set directly instead of
 //  going through the real OTP flow) and linked to a real directory row so
@@ -640,6 +713,13 @@ const SEED_TEST_ACCOUNTS = [
     fullName: 'Test Hotel Owner',
     roleKey: 'hotel_manager',
     linkVendorSlug: 'five-volcanoes-lodge',
+  },
+  {
+    email: 'guidecompany@yoguide.app',
+    password: 'Company#2026',
+    fullName: 'Test Guide Company Owner',
+    roleKey: 'guide_company',
+    linkGuideCompanySlug: 'kivu-adventure-tours',
   },
 ] as const;
 
@@ -684,6 +764,12 @@ async function seedTestAccounts(prisma: PrismaClient): Promise<void> {
         await prisma.vendor.update({ where: { id: vendor.id }, data: { ownerId: user.id } });
       }
     }
+    if ('linkGuideCompanySlug' in acc) {
+      const company = await prisma.guideCompany.findUnique({ where: { slug: acc.linkGuideCompanySlug } });
+      if (company && company.ownerId !== user.id) {
+        await prisma.guideCompany.update({ where: { id: company.id }, data: { ownerId: user.id } });
+      }
+    }
   }
   console.log(`Seeded test accounts: ${SEED_TEST_ACCOUNTS.length}.`);
 }
@@ -699,6 +785,7 @@ async function main() {
     await seedPhrases(prisma);
     await seedToursAndGuides(prisma);
     await seedVendorsAndProducts(prisma);
+    await seedGuideCompanies(prisma);
     await seedTestAccounts(prisma);
   } finally {
     await prisma.$disconnect();
