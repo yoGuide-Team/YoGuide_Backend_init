@@ -541,6 +541,7 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
       description: 'Iconic Rwandan brand — Akabanga chili oil, biscuits, and banana wine.',
       city: 'Nyirangarama',
       isVerified: true,
+      status: 'approved',
       rating: 4.7,
       products: [
         { slug: 'akabanga-50ml', title: 'Akabanga chili oil 50ml', description: 'Iconic Rwandan birds-eye chili oil — a few drops go a long way.', priceCents: 400, category: 'food', images: ['assets/images/coffee-exports.jpg'] },
@@ -554,6 +555,7 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
       description: 'Specialty single-origin Rwandan coffee — beans, ground, capsules.',
       city: 'Kigali',
       isVerified: true,
+      status: 'approved',
       rating: 4.8,
       products: [
         { slug: 'rwanda-bourbon-250g', title: 'Rwanda Bourbon · 250g', description: 'Single-origin Bourbon variety from the Northern Province. Bright, citrusy.', priceCents: 1800, category: 'beverage', images: ['assets/images/cofee.jpg'] },
@@ -567,6 +569,7 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
       description: 'Hand-woven peace baskets, agaseke, by a women-led co-op outside Musanze.',
       city: 'Musanze',
       isVerified: true,
+      status: 'approved',
       rating: 4.9,
       products: [
         { slug: 'agaseke-medium', title: 'Agaseke Peace Basket · medium', description: 'Hand-woven by a women-led cooperative outside Musanze. Each piece is unique.', priceCents: 2200, category: 'art', images: ['assets/images/basket.jpg'], badge: 'Hand-woven' },
@@ -580,6 +583,7 @@ async function seedVendorsAndProducts(prisma: PrismaClient): Promise<void> {
       description: 'Boutique lodge minutes from the Kinigi park gate.',
       city: 'Musanze',
       isVerified: true,
+      status: 'approved',
       rating: 4.6,
       products: [
         { slug: 'fvl-standard-room', title: 'Standard Room', description: 'Queen bed, garden view, en-suite bathroom.', priceCents: 6000, category: 'room', images: [], inventory: 6 },

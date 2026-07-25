@@ -70,6 +70,9 @@ export class AdminUsersController {
       roleKey: u.roleKey,
       roleLabel: u.role.label,
       createdAt: u.createdAt,
+      identityStatus: u.identityStatus,
+      identityDocUrls: u.identityDocUrls,
+      identityRejectionReason: u.identityRejectionReason,
     }));
   }
 
