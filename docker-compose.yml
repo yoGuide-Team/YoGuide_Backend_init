@@ -2,8 +2,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    container_name: yoguide-postgres
+    network_mode: host
     environment:
       POSTGRES_USER: yoguide
       POSTGRES_PASSWORD: yoguide
@@ -14,18 +14,24 @@ services:
       test: ["CMD-SHELL", "pg_isready -U yoguide"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   app:
     build: .
     restart: unless-stopped
-    ports:
-      - "3030:3030"
-    env_file:
-      - .env
+    container_name: yoguide-app
+    network_mode: host
     environment:
-      DATABASE_URL: postgresql://yoguide:yoguide@postgres:5432/yoguide?schema=public
-      DIRECT_URL: postgresql://yoguide:yoguide@postgres:5432/yoguide?schema=public
+      - NODE_ENV=production
+      - PORT=3031  # Changed from 3030 to 3031
+      - DATABASE_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
+      - DIRECT_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
+      - JWT_SECRET=change-me-to-a-long-random-string
+      - JWT_EXPIRES_IN=30d
+      - GOOGLE_CLIENT_ID=24803296444-vc5gsest1rgrbnljpn8g9qaai9cr9o5c.apps.googleusercontent.com
+      - FRONTEND_URL=yoguide://reset-password
+      - GMAIL_USER=yoGuideafrica@gmail.com
+      - GMAIL_APP_PASSWORD=umbwirenyiguhe
     depends_on:
       postgres:
         condition: service_healthy
