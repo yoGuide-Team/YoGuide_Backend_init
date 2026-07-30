@@ -1,13 +1,16 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Logger,
   Post,
   UseGuards,
 } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiBody,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -33,6 +36,8 @@ import type { AuthenticatedUser } from "./authenticated-user";
 @ApiTags("Account")
 @Controller("auth")
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly auth: AuthService) {}
 
   @Post("register")
@@ -98,8 +103,37 @@ resendOtp(@Body() dto: ResendOtpDto) {
   })
   @ApiOkResponse({ type: AuthSessionResponse })
   @ApiUnauthorizedResponse({ type: ApiErrorResponse })
-  loginWithGoogle(@Body() dto: GoogleLoginDto) {
-    return this.auth.loginWithGoogle(dto.idToken);
+  @ApiBody({ type: GoogleLoginDto })
+  loginWithGoogle(@Body() body: Record<string, unknown>) {
+    const payload =
+      body?.payload && typeof body.payload === 'object'
+        ? (body.payload as Record<string, unknown>)
+        : undefined;
+
+    const token =
+      (typeof body?.token === 'string' && body.token) ??
+      (typeof body?.idToken === 'string' && body.idToken) ??
+      (typeof body?.credential === 'string' && body.credential) ??
+      (typeof payload?.token === 'string' && payload.token) ??
+      (typeof payload?.idToken === 'string' && payload.idToken) ??
+      (typeof payload?.credential === 'string' && payload.credential);
+
+    if (!token) {
+      this.logger.debug(`Google login rejected with body: ${JSON.stringify(body)}`);
+      const bodyPreview = { ...(body as Record<string, any>), token: body?.token ?? body?.idToken ?? body?.credential ?? null };
+      throw new BadRequestException({
+        message: 'Google authentication failed',
+        error: 'Google token is required.',
+        payload: bodyPreview,
+      });
+    }
+    // Log token preview for diagnostics (do not log full token)
+    try {
+      console.log('POST /auth/google payload preview:', {
+        bodyPreview: { ...(body as Record<string, any>), tokenPreview: String(token).slice(0, 12) + '...' },
+      });
+    } catch {}
+    return this.auth.loginWithGoogle(token);
   }
 
   // ── /auth/me — mirrors /me but reachable at the path the frontend expects ──

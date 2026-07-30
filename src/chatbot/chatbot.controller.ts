@@ -1,13 +1,57 @@
-import { Controller, Post, Body } from '@nestjs/common';
+// src/chatbot/chatbot.controller.ts
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
 import { ChatbotService } from './chatbot.service';
 
-@Controller('api/chatbot')
+class ChatDto {
+  @IsOptional()
+  @IsString()
+  message?: string;
+
+  @IsOptional()
+  @IsString()
+  text?: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+}
+
+@Controller()
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 
-@Post('ask') // Matches the mapped route: /api/chatbot/ask
-  async handleQuery(@Body() body: { text: string; userId?: string }) {
-    // Directly hands off to our newly fixed Gemini processQuery method
-    return this.chatbotService.processQuery(body.text, body.userId);
+  private getMessage(body: ChatDto): string {
+    return (body.message || body.text || '').trim();
+  }
+
+  private async buildResponse(body: ChatDto) {
+    const userMessage = this.getMessage(body);
+
+    if (!userMessage) {
+      return { reply: 'Please provide a message.' };
+    }
+
+    const result = await this.chatbotService.handleUserQuery(userMessage, body.userId);
+    if (typeof result === 'string') {
+      return { reply: result };
+    }
+
+    return {
+      reply: result.text ?? undefined,
+      ...result,
+    };
+  }
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async handleChat(@Body() body: ChatDto) {
+    return this.buildResponse(body);
+  }
+
+  @Post('chatbot/ask')
+  @HttpCode(HttpStatus.OK)
+  async handleChatAsk(@Body() body: ChatDto) {
+    return this.buildResponse(body);
   }
 }

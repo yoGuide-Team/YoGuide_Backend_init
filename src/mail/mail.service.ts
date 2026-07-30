@@ -1,21 +1,63 @@
 import { Injectable, Logger } from "@nestjs/common";
 import * as nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private readonly transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
+  private readonly transporter =
+    process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+      ? nodemailer.createTransport({
+          service: "gmail",
+          auth: {
+            user: process.env.GMAIL_USER,
+            pass: process.env.GMAIL_APP_PASSWORD,
+          },
+        })
+      : null;
+  private readonly resend = process.env.RESEND_API_KEY
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
+
+  private async sendEmail(options: {
+    to: string;
+    subject: string;
+    html: string;
+    from?: string;
+  }) {
+    const from =
+      options.from ??
+      (process.env.GMAIL_USER
+        ? `"yoGuide Team" <${process.env.GMAIL_USER}>`
+        : "no-reply@yoguide.app");
+
+    if (this.resend) {
+      return this.resend.emails.send({
+        from,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+      });
+    }
+
+    if (this.transporter) {
+      return this.transporter.sendMail({
+        from,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+      });
+    }
+
+    this.logger.warn(
+      "No email provider configured: set RESEND_API_KEY or GMAIL_USER/GMAIL_APP_PASSWORD.",
+    );
+  }
 
   async sendPasswordResetEmail(email: string, name: string, resetUrl: string) {
     try {
-      await this.transporter.sendMail({
-        from: `"yoGuide Team" <${process.env.GMAIL_USER}>`,
+      await this.sendEmail({
+        from: this.resend ? "onboarding@resend.dev" : undefined,
         to: email,
         subject: "Reset your yoGuide password",
         html: `
@@ -31,16 +73,14 @@ export class MailService {
       });
       this.logger.log(`Password reset email sent to ${email}`);
     } catch (error) {
-      // Best-effort: an SMTP outage/misconfig shouldn't 500 the request that
-      // triggered the email — the reset token still exists in the DB either way.
       this.logger.error(`Failed to send password reset email to ${email}:`, error);
     }
   }
 
   async sendOtpEmail(email: string, code: string) {
     try {
-      await this.transporter.sendMail({
-        from: `"yoGuide Team" <${process.env.GMAIL_USER}>`,
+      await this.sendEmail({
+        from: this.resend ? "onboarding@resend.dev" : undefined,
         to: email,
         subject: `${code} is your yoGuide verification code`,
         html: `
@@ -55,17 +95,9 @@ export class MailService {
       });
       this.logger.log(`OTP verification email sent to ${email}`);
     } catch (error) {
-      // Best-effort, same as sendPasswordResetEmail: the code is already
-      // logged to the console by the caller before this runs, and register()/
-      // login() must still succeed even if Gmail SMTP is unreachable.
       this.logger.error(`Failed to send OTP email to ${email}:`, error);
     }
   }
-
-  /** Sent by every :id/verify and :id/reject endpoint (guides, vendors,
-   * guide-companies, identity verification) — same best-effort pattern as
-   * sendOtpEmail: an SMTP outage must never fail the approval/rejection
-   * mutation that triggered it. */
   async sendApplicationStatusEmail(
     email: string,
     name: string,
@@ -75,8 +107,8 @@ export class MailService {
   ) {
     try {
       const isApproved = status === 'approved';
-      await this.transporter.sendMail({
-        from: `"yoGuide Team" <${process.env.GMAIL_USER}>`,
+      await this.sendEmail({
+        from: this.resend ? "onboarding@resend.dev" : undefined,
         to: email,
         subject: isApproved
           ? `Your ${entityType} application was approved`
