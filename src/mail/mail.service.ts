@@ -1,23 +1,27 @@
-import { Injectable, Logger } from "@nestjs/common";
-import * as nodemailer from "nodemailer";
-import { Resend } from "resend";
+import { Injectable, Logger } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
+  private readonly gmailUser = process.env.GMAIL_USER?.trim();
+  private readonly gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.trim();
+  private readonly resendApiKey = process.env.RESEND_API_KEY?.trim();
+  private readonly resendFrom = process.env.RESEND_FROM_EMAIL?.trim() || this.gmailUser || 'no-reply@yoguide.app';
+
   private readonly transporter =
-    process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD
+    this.gmailUser && this.gmailAppPassword
       ? nodemailer.createTransport({
-          service: "gmail",
+          service: 'gmail',
           auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_APP_PASSWORD,
+            user: this.gmailUser,
+            pass: this.gmailAppPassword,
           },
         })
       : null;
-  private readonly resend = process.env.RESEND_API_KEY
-    ? new Resend(process.env.RESEND_API_KEY)
-    : null;
+
+  private readonly resend = this.resendApiKey ? new Resend(this.resendApiKey) : null;
 
   private async sendEmail(options: {
     to: string;
@@ -25,41 +29,163 @@ export class MailService {
     html: string;
     from?: string;
   }) {
-    const from =
-      options.from ??
-      (process.env.GMAIL_USER
-        ? `"yoGuide Team" <${process.env.GMAIL_USER}>`
-        : "no-reply@yoguide.app");
+    const from = options.from ?? this.getDefaultFromAddress();
+    const gmailFrom = this.gmailUser ? `"yoGuide Team" <${this.gmailUser}>` : from;
 
-    if (this.resend) {
-      return this.resend.emails.send({
+    const sendViaGmail = async () => {
+      if (!this.transporter) {
+        throw new Error('Gmail transporter is not configured.');
+      }
+      const result = await this.transporter.sendMail({
+        from: gmailFrom,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+      });
+      this.logger.log(`Email sent via Gmail to ${options.to}`);
+      return result;
+    };
+
+    const sendViaResend = async () => {
+      const result = await this.resend!.emails.send({
         from,
         to: options.to,
         subject: options.subject,
         html: options.html,
       });
-    }
+      const resendResult = result as { error?: unknown };
+      if (resendResult?.error) {
+        const errorMessage =
+          typeof resendResult.error === 'string'
+            ? resendResult.error
+            : resendResult.error && typeof resendResult.error === 'object' && 'message' in resendResult.error
+            ? (resendResult.error as { message?: string }).message
+            : JSON.stringify(resendResult.error);
+        throw new Error(errorMessage || 'Resend email delivery failed.');
+      }
+      this.logger.log(`Email sent via Resend to ${options.to}`);
+      return result;
+    };
 
     if (this.transporter) {
-      return this.transporter.sendMail({
-        from,
-        to: options.to,
-        subject: options.subject,
-        html: options.html,
-      });
+      try {
+        return await sendViaGmail();
+      } catch (gmailError) {
+        this.logger.error(
+          `Gmail delivery failed for ${options.to}: ${
+            gmailError instanceof Error ? gmailError.message : JSON.stringify(gmailError)
+          }`,
+        );
+        if (this.resend) {
+          this.logger.warn(
+            `Falling back to Resend because Gmail failed for ${options.to}.`,
+          );
+          try {
+            return await sendViaResend();
+          } catch (resendError) {
+            this.logger.error(
+              `Resend fallback also failed for ${options.to}: ${
+                resendError instanceof Error ? resendError.message : JSON.stringify(resendError)
+              }`,
+            );
+            throw resendError;
+          }
+        }
+        throw gmailError;
+      }
+    }
+
+    if (this.resend) {
+      try {
+        return await sendViaResend();
+      } catch (resendError) {
+        const errorMessage =
+          resendError instanceof Error
+            ? resendError.message
+            : JSON.stringify(resendError);
+
+        this.logger.error(
+          `Resend email delivery failed for ${options.to}: ${errorMessage}`,
+        );
+
+        if (this.transporter) {
+          this.logger.warn(
+            `Falling back to Gmail because Resend failed for ${options.to}.`,
+          );
+          try {
+            return await sendViaGmail();
+          } catch (gmailError) {
+            this.logger.error(
+              `Gmail fallback also failed for ${options.to}: ${
+                gmailError instanceof Error ? gmailError.message : JSON.stringify(gmailError)
+              }`,
+            );
+            this.logEmailPreview({ from, to: options.to, subject: options.subject, html: options.html });
+            return;
+          }
+        }
+
+        if (this.isResendDomainVerificationError(resendError)) {
+          this.logger.error(
+            `Resend domain verification failed for ${options.to}. Email will not be sent unless an alternate provider is configured.`,
+          );
+          this.logEmailPreview({ from, to: options.to, subject: options.subject, html: options.html });
+          return;
+        }
+
+        throw resendError;
+      }
     }
 
     this.logger.warn(
-      "No email provider configured: set RESEND_API_KEY or GMAIL_USER/GMAIL_APP_PASSWORD.",
+      'No email provider configured: set RESEND_API_KEY or GMAIL_USER/GMAIL_APP_PASSWORD.',
     );
+    this.logEmailPreview({ from, to: options.to, subject: options.subject, html: options.html });
+  }
+
+  private getDefaultFromAddress() {
+    if (this.gmailUser) {
+      return `"yoGuide Team" <${this.gmailUser}>`;
+    }
+
+    if (this.resendFrom) {
+      return this.resendFrom;
+    }
+
+    return 'no-reply@yoguide.app';
+  }
+
+  private isResendDomainVerificationError(error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+        ? error
+        : JSON.stringify(error);
+
+    return /domain.*not verified/i.test(message) || /not verified/i.test(message);
+  }
+
+  private logEmailPreview(options: {
+    to: string;
+    from: string;
+    subject: string;
+    html: string;
+  }) {
+    this.logger.warn(`No working email provider configured for ${options.to}. Showing email preview in the server logs.`);
+    this.logger.log(`Email preview for ${options.to}:
+From: ${options.from}
+Subject: ${options.subject}
+
+${options.html}`);
   }
 
   async sendPasswordResetEmail(email: string, name: string, resetUrl: string) {
     try {
       await this.sendEmail({
-        from: this.resend ? "onboarding@resend.dev" : undefined,
+        from: this.resend ? this.resendFrom : undefined,
         to: email,
-        subject: "Reset your yoGuide password",
+        subject: 'Reset your yoGuide password',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
             <h2>Hello ${name},</h2>
@@ -67,6 +193,8 @@ export class MailService {
             <p style="margin: 24px 0;">
               <a href="${resetUrl}" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
             </p>
+            <p>If the button does not work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color: #065f46;">${resetUrl}</p>
             <p>This link expires in 30 minutes.</p>
           </div>
         `,
@@ -80,7 +208,7 @@ export class MailService {
   async sendOtpEmail(email: string, code: string) {
     try {
       await this.sendEmail({
-        from: this.resend ? "onboarding@resend.dev" : undefined,
+        from: this.resend ? this.resendFrom : undefined,
         to: email,
         subject: `${code} is your yoGuide verification code`,
         html: `
@@ -98,6 +226,7 @@ export class MailService {
       this.logger.error(`Failed to send OTP email to ${email}:`, error);
     }
   }
+
   async sendApplicationStatusEmail(
     email: string,
     name: string,
@@ -108,7 +237,7 @@ export class MailService {
     try {
       const isApproved = status === 'approved';
       await this.sendEmail({
-        from: this.resend ? "onboarding@resend.dev" : undefined,
+        from: this.resend ? this.resendFrom : undefined,
         to: email,
         subject: isApproved
           ? `Your ${entityType} application was approved`

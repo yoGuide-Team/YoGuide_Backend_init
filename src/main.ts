@@ -30,6 +30,16 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
+  app.getHttpAdapter().get('/', (req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'yoGuide backend',
+      docs: '/docs',
+      health: '/api/health',
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   // ── Swagger / OpenAPI ──────────────────────────────────────
   const swaggerConfig = new DocumentBuilder()
     .setTitle('yoGuide Platform API')
@@ -63,10 +73,24 @@ async function bootstrap() {
     customSiteTitle: 'yoGuide API · v0.6.0',
   });
 
+  const startOnPort = async (port: number) => {
+    try {
+      await app.listen(port);
+      Logger.log(`yoGuide backend listening on http://localhost:${port}`, 'Bootstrap');
+      Logger.log(`API docs: http://localhost:${port}/docs`, 'Bootstrap');
+    } catch (error: any) {
+      if (error?.code === 'EADDRINUSE') {
+        const nextPort = port + 1;
+        logger.warn(`Port ${port} is busy, retrying on ${nextPort}.`);
+        await startOnPort(nextPort);
+        return;
+      }
+      throw error;
+    }
+  };
+
   const port = Number(process.env.PORT ?? 3030);
-  await app.listen(port);
-  Logger.log(`yoGuide backend listening on http://localhost:${port}`, 'Bootstrap');
-  Logger.log(`API docs: http://localhost:${port}/docs`, 'Bootstrap');
+  await startOnPort(port);
 }
 
 bootstrap();
