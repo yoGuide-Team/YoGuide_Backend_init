@@ -45,6 +45,14 @@ export class CreateBookingDto {
 
   @ApiProperty({
     required: false,
+    description: 'Tour id, for type=tour bookings — links the booking to its Tour package.',
+  })
+  @IsOptional()
+  @IsString()
+  tourId?: string;
+
+  @ApiProperty({
+    required: false,
     description: 'Guide id, for type=guide bookings — powers GET /guides/me/bookings.',
   })
   @IsOptional()

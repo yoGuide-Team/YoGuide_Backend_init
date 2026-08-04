@@ -294,6 +294,11 @@ model Tour {
   title           String
   description     String
   vehicleType     String
+  /// Free-text tour type used for browse/filter buckets on the client —
+  /// e.g. "community", "gastronomy", "adventure", "city". Not an enum at
+  /// the DB level (same convention as every other categorical field in
+  /// this schema); validated against a fixed list at the DTO layer.
+  category        String?
   durationMinutes Int
   priceCents      Int
   currency        String        @default("USD")
@@ -358,6 +363,18 @@ model Guide {
   isVerified      Boolean         @default(false)
   isAvailable     Boolean         @default(true)
   city            String?
+  /// ── Gastronomy-only fields ──
+  /// Populated for guides whose `specialties` includes "#Food" (the
+  /// frontend's chef convention). Null for plain tour guides.
+  restaurantName     String?
+  gastronomyCategory String?
+  experienceName     String?
+  gastronomyArea     String?
+  chefTags           String[]        @default([])
+  /// Fixed tasting-menu courses: [{course, description}, ...]
+  menuCourses        Json?
+  /// Video-teaser narrative: {title, durationLabel, text}
+  story              Json?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   documents       GuideDocument[]

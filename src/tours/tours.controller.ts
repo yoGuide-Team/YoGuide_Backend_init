@@ -30,11 +30,27 @@ import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
 
 const VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
+// Browse/filter buckets surfaced on the client's tour-type picker. "community"
+// and "gastronomy" are first-class categories here even though gastronomy
+// experiences are usually booked through a Guide/chef profile rather than a
+// Tour — a category is still useful for any Tour package a chef or community
+// operator publishes directly.
+const TOUR_CATEGORIES = [
+  'community',
+  'gastronomy',
+  'adventure',
+  'city',
+  'wildlife_safari',
+  'history_heritage',
+  'culture',
+  'nature_scenic',
+] as const;
 
 class CreateTourDto {
   @IsString() @MinLength(3) title!: string;
   @IsString() @MinLength(10) description!: string;
   @IsIn(VEHICLE_TYPES) vehicleType!: string;
+  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsInt() @Min(15) durationMinutes!: number;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsString() currency?: string;
@@ -52,6 +68,7 @@ class UpdateTourDto {
   @IsOptional() @IsString() @MinLength(3) title?: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsIn(VEHICLE_TYPES) vehicleType?: string;
+  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsOptional() @IsInt() @Min(15) durationMinutes?: number;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
   @IsOptional() @IsString() cityId?: string;
@@ -85,15 +102,18 @@ export class ToursController {
   })
   @ApiQuery({ name: 'cityId', required: false })
   @ApiQuery({ name: 'vehicleType', required: false, enum: [...VEHICLE_TYPES] })
+  @ApiQuery({ name: 'category', required: false, enum: [...TOUR_CATEGORIES] })
   async list(
     @Query('cityId') cityId?: string,
     @Query('vehicleType') vehicleType?: string,
+    @Query('category') category?: string,
   ) {
     return this.prisma.tour.findMany({
       where: {
         isPublished: true,
         cityId: cityId || undefined,
         vehicleType: vehicleType || undefined,
+        category: category || undefined,
       },
       orderBy: { createdAt: 'desc' },
       include: {

@@ -30,6 +30,15 @@ export class BookingsService {
         throw new BadRequestException(`Place '${dto.placeId}' does not exist.`);
       }
     }
+    if (dto.tourId) {
+      const exists = await this.prisma.tour.findUnique({
+        where: { id: dto.tourId },
+        select: { id: true },
+      });
+      if (!exists) {
+        throw new BadRequestException(`Tour '${dto.tourId}' does not exist.`);
+      }
+    }
     if (dto.guideId) {
       const exists = await this.prisma.guide.findUnique({
         where: { id: dto.guideId },
@@ -220,6 +229,7 @@ export class BookingsService {
       totalCents: dto.totalCents,
       currency: dto.currency ?? 'USD',
       placeId: dto.placeId,
+      tourId: dto.tourId,
       guideId: dto.guideId,
       vendorId: dto.vendorId,
       details: (dto.details ?? {}) as Prisma.InputJsonValue,
@@ -238,6 +248,8 @@ export class BookingsService {
     return {
       transactions: { orderBy: { createdAt: 'asc' as const } },
       place: { select: { id: true, name: true, kind: true } },
+      tour: { select: { id: true, title: true, category: true } },
+      guide: { select: { id: true, fullName: true } },
       user: { select: { id: true, email: true, fullName: true } },
     };
   }
@@ -263,6 +275,10 @@ export class BookingsService {
       place: b.place
         ? { id: b.place.id, name: b.place.name, kind: b.place.kind }
         : null,
+      tourId: b.tourId,
+      tour: b.tour ? { id: b.tour.id, title: b.tour.title, category: b.tour.category } : null,
+      guideId: b.guideId,
+      guide: b.guide ? { id: b.guide.id, fullName: b.guide.fullName } : null,
       user: b.user
         ? { id: b.user.id, email: b.user.email, fullName: b.user.fullName }
         : null,
