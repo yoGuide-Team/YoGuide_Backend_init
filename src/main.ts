@@ -64,9 +64,9 @@ async function bootstrap() {
   });
 
   const port = Number(process.env.PORT ?? 3030);
-  await app.listen(port);
-  Logger.log(`yoGuide backend listening on http://localhost:${port}`, 'Bootstrap');
-  Logger.log(`API docs: http://localhost:${port}/docs`, 'Bootstrap');
+  await app.listen(port, '0.0.0.0');
+  Logger.log(`yoGuide backend listening on http://0.0.0.0:${port}`, 'Bootstrap');
+  Logger.log(`API docs: http://0.0.0.0:${port}/docs`, 'Bootstrap');
 }
 
 bootstrap();
