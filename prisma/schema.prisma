@@ -288,32 +288,46 @@ model Phrase {
 
 /// A bookable tour package — moto, EV-car, walking, multi-day. Each tour
 /// carries a curated list of TourStops in order.
+enum TourCategory {
+  CITY
+  ADVENTURE
+  COMMUNITY
+  GASTRONOMY
+  CUSTOM
+}
+
 model Tour {
-  id              String        @id @default(cuid())
+  id              String       @id @default(cuid())
   cityId          String?
   title           String
   description     String
+  category        TourCategory @default(CITY)
   vehicleType     String
   durationMinutes Int
   priceCents      Int
-  currency        String        @default("USD")
-  isCustom        Boolean       @default(false)
+  currency        String       @default("USD")
+  isCustom        Boolean      @default(false)
   coverImage      String?
-  highlights      String[]      @default([])
-  isPublished     Boolean       @default(true)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  city            City?         @relation(fields: [cityId], references: [id])
+  highlights      String[]     @default([])
+  includes        String[]     @default([])
+  maxGroupSize    Int?         @default(10)
+  rating          Float        @default(5.0)
+  reviewCount     Int          @default(0)
+  isPublished     Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  city            City?        @relation(fields: [cityId], references: [id])
   stops           TourStop[]
-  bookings        Booking[]
-  /// Package ownership — a tour may belong to a self-employed guide, a
-  /// guide company, or neither (admin-created). Never both at once in
-  /// practice, but not DB-enforced — application code assigns exactly one.
+  bookings        Booking[]    // 👈 ADD THIS LINE HERE
+
   guideId         String?
-  guide           Guide?        @relation(fields: [guideId], references: [id], onDelete: SetNull)
+  guide           Guide?       @relation(fields: [guideId], references: [id], onDelete: SetNull)
   companyId       String?
   company         GuideCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
+  @@index([category])
+  @@index([cityId])
   @@index([guideId])
   @@index([companyId])
 }
