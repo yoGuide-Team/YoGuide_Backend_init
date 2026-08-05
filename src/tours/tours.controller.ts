@@ -38,16 +38,7 @@ const VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
 // experiences are usually booked through a Guide/chef profile rather than a
 // Tour — a category is still useful for any Tour package a chef or community
 // operator publishes directly.
-const TOUR_CATEGORIES = [
-  'community',
-  'gastronomy',
-  'adventure',
-  'city',
-  'wildlife_safari',
-  'history_heritage',
-  'culture',
-  'nature_scenic',
-] as const;
+
 
 export enum TourCategory {
   CITY = 'CITY',
@@ -62,7 +53,6 @@ class CreateTourDto {
   @IsString() @MinLength(10) description!: string;
   @IsEnum(TourCategory) category!: TourCategory;
   @IsIn(VEHICLE_TYPES) vehicleType!: string;
-  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsInt() @Min(15) durationMinutes!: number;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsString() currency?: string;
@@ -83,7 +73,6 @@ class UpdateTourDto {
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsEnum(TourCategory) category?: TourCategory;
   @IsOptional() @IsIn(VEHICLE_TYPES) vehicleType?: string;
-  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsOptional() @IsInt() @Min(15) durationMinutes?: number;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
   @IsOptional() @IsString() cityId?: string;
@@ -122,12 +111,10 @@ export class ToursController {
   @ApiQuery({ name: 'cityId', required: false })
   @ApiQuery({ name: 'category', required: false, enum: TourCategory })
   @ApiQuery({ name: 'vehicleType', required: false, enum: [...VEHICLE_TYPES] })
-  @ApiQuery({ name: 'category', required: false, enum: [...TOUR_CATEGORIES] })
   async list(
     @Query('cityId') cityId?: string,
     @Query('category') category?: TourCategory,
     @Query('vehicleType') vehicleType?: string,
-    @Query('category') category?: string,
   ) {
     return this.prisma.tour.findMany({
       where: {
@@ -135,7 +122,6 @@ export class ToursController {
         cityId: cityId || undefined,
         category: category || undefined,
         vehicleType: vehicleType || undefined,
-        category: category || undefined,
       },
       orderBy: { createdAt: 'desc' },
       include: {
