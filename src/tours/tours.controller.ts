@@ -113,14 +113,16 @@ export class ToursController {
   @ApiQuery({ name: 'vehicleType', required: false, enum: [...VEHICLE_TYPES] })
   async list(
     @Query('cityId') cityId?: string,
-    @Query('category') category?: TourCategory,
+    @Query('category') category?: string,
     @Query('vehicleType') vehicleType?: string,
   ) {
     return this.prisma.tour.findMany({
       where: {
         isPublished: true,
         cityId: cityId || undefined,
-        category: category || undefined,
+category: category
+        ? category.toUpperCase() as TourCategory
+        : undefined,
         vehicleType: vehicleType || undefined,
       },
       orderBy: { createdAt: 'desc' },
