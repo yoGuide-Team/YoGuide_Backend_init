@@ -37,6 +37,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AuditLogService } from '../audit/audit-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
+import { TourCategory } from 'src/tours/tours.controller';
 
 // Same set AdminToursController's CreateTourDto validates against
 // (src/tours/tours.controller.ts) — packages created here are plain Tour
@@ -288,8 +289,12 @@ export class GuidesController {
       throw new ForbiddenException('Your guide application must be approved before you can publish packages.');
     }
     return this.prisma.tour.create({
-      data: { ...dto, guideId: guide.id, highlights: dto.highlights ?? [] },
-      include: { stops: true },
+data: {
+  ...dto,
+  guideId: guide.id,
+  highlights: dto.highlights ?? [],
+  category: dto.category as TourCategory,
+},      include: { stops: true },
     });
   }
 
@@ -308,8 +313,13 @@ export class GuidesController {
     if (!tour || tour.guideId !== guide.id) {
       throw new NotFoundException('Package not found on your guide profile.');
     }
-    return this.prisma.tour.update({ where: { id }, data: dto });
-  }
+return this.prisma.tour.update({
+  where: { id },
+  data: {
+    ...dto,
+    category: dto.category as TourCategory,
+  },
+});  }
 
   @Delete('me/packages/:id')
   @UseGuards(AuthGuard)

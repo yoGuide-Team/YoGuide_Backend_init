@@ -15,12 +15,15 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsIn,
   IsInt,
   IsLatitude,
   IsLongitude,
+  IsNumber,
   IsOptional,
   IsString,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
@@ -35,31 +38,32 @@ const VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
 // experiences are usually booked through a Guide/chef profile rather than a
 // Tour — a category is still useful for any Tour package a chef or community
 // operator publishes directly.
-const TOUR_CATEGORIES = [
-  'community',
-  'gastronomy',
-  'adventure',
-  'city',
-  'wildlife_safari',
-  'history_heritage',
-  'culture',
-  'nature_scenic',
-] as const;
+
+
+export enum TourCategory {
+  CITY = 'CITY',
+  ADVENTURE = 'ADVENTURE',
+  COMMUNITY = 'COMMUNITY',
+  GASTRONOMY = 'GASTRONOMY',
+  CUSTOM = 'CUSTOM',
+}
 
 class CreateTourDto {
   @IsString() @MinLength(3) title!: string;
   @IsString() @MinLength(10) description!: string;
+  @IsEnum(TourCategory) category!: TourCategory;
   @IsIn(VEHICLE_TYPES) vehicleType!: string;
-  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsInt() @Min(15) durationMinutes!: number;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsString() currency?: string;
   @IsOptional() @IsString() cityId?: string;
   @IsOptional() @IsString() coverImage?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) highlights?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true }) includes?: string[];
+  @IsOptional() @IsInt() @Min(1) maxGroupSize?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(5) rating?: number;
+  @IsOptional() @IsInt() @Min(0) reviewCount?: number;
   @IsOptional() @IsBoolean() isPublished?: boolean;
-  /** Assign ownership at creation — matches the "Admin=Manage" row in the
-   * permission matrix (admin can create AND assign, not just create ownerless). */
   @IsOptional() @IsString() guideId?: string;
   @IsOptional() @IsString() companyId?: string;
 }
@@ -67,13 +71,17 @@ class CreateTourDto {
 class UpdateTourDto {
   @IsOptional() @IsString() @MinLength(3) title?: string;
   @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsEnum(TourCategory) category?: TourCategory;
   @IsOptional() @IsIn(VEHICLE_TYPES) vehicleType?: string;
-  @IsOptional() @IsIn(TOUR_CATEGORIES) category?: string;
   @IsOptional() @IsInt() @Min(15) durationMinutes?: number;
   @IsOptional() @IsInt() @Min(0) priceCents?: number;
   @IsOptional() @IsString() cityId?: string;
   @IsOptional() @IsString() coverImage?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) highlights?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true }) includes?: string[];
+  @IsOptional() @IsInt() @Min(1) maxGroupSize?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(5) rating?: number;
+  @IsOptional() @IsInt() @Min(0) reviewCount?: number;
   @IsOptional() @IsBoolean() isPublished?: boolean;
   @IsOptional() @IsString() guideId?: string;
   @IsOptional() @IsString() companyId?: string;
@@ -98,39 +106,55 @@ export class ToursController {
   @ApiOperation({
     summary: 'List published tours',
     description:
-      'Tour packages — moto, EV-car, walking, minivan. Includes full stop list per tour. Filterable by city or vehicle type.',
+      'Tour packages filterable by city, category, or vehicle type.',
   })
   @ApiQuery({ name: 'cityId', required: false })
+  @ApiQuery({ name: 'category', required: false, enum: TourCategory })
   @ApiQuery({ name: 'vehicleType', required: false, enum: [...VEHICLE_TYPES] })
-  @ApiQuery({ name: 'category', required: false, enum: [...TOUR_CATEGORIES] })
   async list(
     @Query('cityId') cityId?: string,
-    @Query('vehicleType') vehicleType?: string,
     @Query('category') category?: string,
+    @Query('vehicleType') vehicleType?: string,
   ) {
     return this.prisma.tour.findMany({
       where: {
         isPublished: true,
         cityId: cityId || undefined,
+category: category
+        ? category.toUpperCase() as TourCategory
+        : undefined,
         vehicleType: vehicleType || undefined,
-        category: category || undefined,
       },
       orderBy: { createdAt: 'desc' },
       include: {
         stops: { orderBy: { ordinal: 'asc' } },
-        city: { select: { slug: true, name: true } },
+        city: { select: { id: true, slug: true, name: true } },
+        guide: {
+          select: {
+            id: true,
+            user: { select: { fullName: true, avatarUrl: true } },
+          },
+        },
+        company: { select: { id: true, name: true } },
       },
     });
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get tour with stops' })
+  @ApiOperation({ summary: 'Get tour with stops and relations' })
   async detail(@Param('id') id: string) {
     const tour = await this.prisma.tour.findUnique({
       where: { id },
       include: {
         stops: { orderBy: { ordinal: 'asc' } },
-        city: { select: { slug: true, name: true } },
+        city: { select: { id: true, slug: true, name: true } },
+        guide: {
+          select: {
+            id: true,
+            user: { select: { fullName: true, avatarUrl: true } },
+          },
+        },
+        company: { select: { id: true, name: true } },
       },
     });
     if (!tour) throw new NotFoundException(`Tour '${id}' not found.`);
@@ -147,7 +171,7 @@ export class AdminToursController {
 
   @Get()
   @RequirePermissions('tours.read.admin')
-  @ApiOperation({ summary: 'List all tours (admin)', description: 'Includes unpublished tours.' })
+  @ApiOperation({ summary: 'List all tours (admin)' })
   list() {
     return this.prisma.tour.findMany({
       orderBy: { createdAt: 'desc' },
@@ -160,7 +184,11 @@ export class AdminToursController {
   @ApiOperation({ summary: 'Create tour' })
   async create(@Body() dto: CreateTourDto) {
     return this.prisma.tour.create({
-      data: { ...dto, highlights: dto.highlights ?? [] },
+      data: {
+        ...dto,
+        highlights: dto.highlights ?? [],
+        includes: dto.includes ?? [],
+      },
       include: { stops: true },
     });
   }

@@ -14,7 +14,7 @@ async function main() {
   }
 
   const existingCommunityTour = await prisma.tour.findFirst({
-    where: { category: 'community', title: 'Kigali Community & Culture Walk' },
+    where: { category: 'COMMUNITY', title: 'Kigali Community & Culture Walk' },
   });
   if (!existingCommunityTour) {
     await prisma.tour.create({
@@ -24,7 +24,7 @@ async function main() {
         description:
           'A half-day walking tour through a Kigali neighbourhood, led by a local resident — cooperative workshops, a community sports pitch, and a family-run market stall.',
         vehicleType: 'walking',
-        category: 'community',
+        category: 'COMMUNITY',
         durationMinutes: 210,
         priceCents: 2200,
         currency: 'USD',
