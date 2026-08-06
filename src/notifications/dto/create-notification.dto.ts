@@ -11,6 +11,8 @@ export enum NotificationType {
   GENERAL           = 'general',
   VERIFICATION_APPROVED = 'verification_approved',
   VERIFICATION_REJECTED = 'verification_rejected',
+  BOOKING_CONFIRMED = 'booking_confirmed',
+  REVIEW_SUBMITTED = 'review_submitted',
 }
  
 export class CreateNotificationDto {

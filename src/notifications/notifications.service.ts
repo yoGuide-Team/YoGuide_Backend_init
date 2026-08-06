@@ -114,4 +114,27 @@ export class NotificationsService {
       metadata: JSON.stringify({ entityType, reason }),
     }).catch((e) => this.logger.warn(`notifyVerificationRejected: ${e.message}`));
   }
+
+  /** Called by BookingsService after a booking is created */
+  async notifyBookingConfirmed(userId: string, bookingId: string, totalCents: number, currency: string) {
+    const formatted = (totalCents / 100).toFixed(2);
+    await this.create({
+      userId,
+      title: '✅ Booking Confirmed',
+      body:  `Your booking is confirmed — ${formatted} ${currency}. We'll email you the details.`,
+      type:  NotificationType.BOOKING_CONFIRMED,
+      metadata: JSON.stringify({ bookingId, totalCents, currency }),
+    }).catch((e) => this.logger.warn(`notifyBookingConfirmed: ${e.message}`));
+  }
+
+  /** Called by ReviewsController after a review is submitted */
+  async notifyReviewSubmitted(userId: string, rating: number) {
+    await this.create({
+      userId,
+      title: '📝 Review Submitted',
+      body:  `Thanks for your ${rating}-star review — it's awaiting approval before it goes live.`,
+      type:  NotificationType.REVIEW_SUBMITTED,
+      metadata: JSON.stringify({ rating }),
+    }).catch((e) => this.logger.warn(`notifyReviewSubmitted: ${e.message}`));
+  }
 }

@@ -260,4 +260,48 @@ ${options.html}`);
       this.logger.error(`Failed to send application status email to ${email}:`, error);
     }
   }
+
+  async sendBookingConfirmationEmail(
+    email: string,
+    name: string,
+    booking: {
+      id: string;
+      type: string;
+      totalCents: number;
+      currency: string;
+      scheduledAt?: Date | null;
+      title?: string | null;
+    },
+  ) {
+    try {
+      const amount = (booking.totalCents / 100).toFixed(2);
+      const when = booking.scheduledAt
+        ? new Date(booking.scheduledAt).toLocaleString('en-GB', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })
+        : 'To be confirmed';
+      await this.sendEmail({
+        from: this.resend ? this.resendFrom : undefined,
+        to: email,
+        subject: `Booking confirmed${booking.title ? `: ${booking.title}` : ''}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+            <h2>Hello ${name},</h2>
+            <p>Your booking is confirmed. Here are the details:</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+              <tr><td style="padding: 6px 0; color: #667085;">Booking ref</td><td style="padding: 6px 0; text-align: right;">${booking.id}</td></tr>
+              ${booking.title ? `<tr><td style="padding: 6px 0; color: #667085;">Experience</td><td style="padding: 6px 0; text-align: right;">${booking.title}</td></tr>` : ''}
+              <tr><td style="padding: 6px 0; color: #667085;">When</td><td style="padding: 6px 0; text-align: right;">${when}</td></tr>
+              <tr><td style="padding: 6px 0; color: #667085;">Total</td><td style="padding: 6px 0; text-align: right; font-weight: bold; color: #0C8A5B;">${amount} ${booking.currency}</td></tr>
+            </table>
+            <p>You can message your guide and review your booking any time in the yoGuide app.</p>
+          </div>
+        `,
+      });
+      this.logger.log(`Booking confirmation email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send booking confirmation email to ${email}:`, error);
+    }
+  }
 }
