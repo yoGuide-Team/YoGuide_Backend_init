@@ -16,6 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsIn,
   IsInt,
   IsObject,
@@ -43,16 +44,6 @@ import { TourCategory } from 'src/tours/tours.controller';
 // (src/tours/tours.controller.ts) — packages created here are plain Tour
 // rows, so they must satisfy the same constraint.
 const PACKAGE_VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
-const PACKAGE_CATEGORIES = [
-  'community',
-  'gastronomy',
-  'adventure',
-  'city',
-  'wildlife_safari',
-  'history_heritage',
-  'culture',
-  'nature_scenic',
-] as const;
 // Matches the frontend's GastronomyCategory enum (lib/shared/tours.dart).
 const GASTRONOMY_CATEGORIES = ['homestyle', 'hotelChefsTable', 'marketStreetFood', 'farmToTable'] as const;
 
@@ -132,7 +123,7 @@ class UpsertPackageDto {
   @IsString() @MinLength(3) title!: string;
   @IsString() @MinLength(10) description!: string;
   @IsIn(PACKAGE_VEHICLE_TYPES) vehicleType!: string;
-  @IsOptional() @IsIn(PACKAGE_CATEGORIES) category?: string;
+  @IsOptional() @IsEnum(TourCategory) category?: TourCategory;
   @IsInt() @Min(15) durationMinutes!: number;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsString() currency?: string;
@@ -289,12 +280,12 @@ export class GuidesController {
       throw new ForbiddenException('Your guide application must be approved before you can publish packages.');
     }
     return this.prisma.tour.create({
-data: {
-  ...dto,
-  guideId: guide.id,
-  highlights: dto.highlights ?? [],
-  category: dto.category as TourCategory,
-},      include: { stops: true },
+      data: {
+        ...dto,
+        guideId: guide.id,
+        highlights: dto.highlights ?? [],
+      },
+      include: { stops: true },
     });
   }
 
@@ -313,13 +304,11 @@ data: {
     if (!tour || tour.guideId !== guide.id) {
       throw new NotFoundException('Package not found on your guide profile.');
     }
-return this.prisma.tour.update({
-  where: { id },
-  data: {
-    ...dto,
-    category: dto.category as TourCategory,
-  },
-});  }
+    return this.prisma.tour.update({
+      where: { id },
+      data: { ...dto },
+    });
+  }
 
   @Delete('me/packages/:id')
   @UseGuards(AuthGuard)
