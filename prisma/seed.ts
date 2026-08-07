@@ -1,4 +1,5 @@
 import { PrismaClient, TourCategory } from '@prisma/client';
+import bcrypt from "bcrypt";
 type SeedPlace = {
   id: string;
   name: string;
@@ -22,52 +23,476 @@ const prisma = new PrismaClient();
 
 
 async function seedRoles() {
+
   const roles = [
+
     {
       key: 'user',
-      label: 'User',
-      isSystem: false,
+      label: 'Traveler',
+      isSystem: true,
+      permissions: [
+        "view_places",
+        "view_tours",
+        "book_tours",
+        "manage_profile",
+        "write_reviews"
+      ]
     },
-    {
-      key: 'admin',
-      label: 'Administrator',
-      isSystem: false,
-    },
+
+
     {
       key: 'guide',
       label: 'Tour Guide',
-      isSystem: false,
+      isSystem: true,
+      permissions: [
+        "manage_guide_profile",
+        "create_tours",
+        "manage_tour_bookings",
+        "view_earnings"
+      ]
     },
+
+
     {
       key: 'vendor',
       label: 'Vendor',
-      isSystem: false,
+      isSystem: true,
+      permissions: [
+        "manage_business_profile",
+        "manage_products",
+        "manage_bookings",
+        "view_earnings"
+      ]
     },
+
+
     {
-      key: 'TRAVELER',
-      label: 'Traveler',
-      isSystem: false,
-    },
+      key: 'admin',
+      label: 'Administrator',
+      isSystem: true,
+      permissions: [
+        "manage_users",
+        "manage_roles",
+        "manage_content",
+        "approve_profiles"
+      ]
+    }
+
   ];
 
 
   for (const role of roles) {
+
     await prisma.role.upsert({
-      where: {
+
+      where:{
+        key: role.key
+      },
+
+
+      update:{
+        label: role.label,
+        permissions: role.permissions,
+        isSystem: role.isSystem
+      },
+
+
+      create:{
         key: role.key,
-      },
-      update: {},
-      create: {
-        ...role,
-        permissions: [],
-      },
+        label: role.label,
+        permissions: role.permissions,
+        isSystem: role.isSystem
+      }
+
     });
+
   }
 
 
   console.log("✅ Roles seeded");
+
 }
 
+
+async function seedUsers(){
+
+  const password = await bcrypt.hash(
+    "Password123!",
+    10
+  );
+
+
+  // NORMAL TOURIST
+  const traveler = await prisma.user.upsert({
+
+  where:{
+    email:"traveler@test.com"
+  },
+
+  update:{
+    fullName:"John Traveler",
+    roleKey:"user",
+    profileType:"TOURIST",
+    emailVerified:true
+  },
+
+  create:{
+    email:"traveler@test.com",
+    fullName:"John Traveler",
+    passwordHash:password,
+    roleKey:"user",
+    profileType:"TOURIST",
+    emailVerified:true
+  }
+
+});
+
+  // ADMIN
+
+  const admin = await prisma.user.upsert({
+
+  where:{
+    email:"admin@test.com"
+  },
+
+  update:{
+    fullName:"System Admin",
+    roleKey:"admin",
+    profileType:"ADMIN",
+    emailVerified:true
+  },
+
+  create:{
+    email:"admin@test.com",
+    fullName:"System Admin",
+    passwordHash:password,
+    roleKey:"admin",
+    profileType:"ADMIN",
+    emailVerified:true
+  }
+
+});
+
+
+  // GUIDE USER
+
+  const guideUser = await prisma.user.upsert({
+
+    where:{
+      email:"guide@test.com"
+    },
+
+    update:{
+  fullName:"Patrick Guide",
+  roleKey:"guide",
+  profileType:"TOUR_GUIDE",
+  emailVerified:true
+},
+
+    create:{
+      email:"guide@test.com",
+      fullName:"Patrick Guide",
+      passwordHash:password,
+      roleKey:"guide",
+      profileType:"TOUR_GUIDE",
+      emailVerified:true
+    }
+
+  });
+
+
+  await prisma.guide.upsert({
+
+    where:{
+      userId:guideUser.id
+    },
+
+    update:{},
+
+    create:{
+
+      userId:guideUser.id,
+
+      fullName:"Patrick Guide",
+
+      bio:
+      "Professional Kigali city guide",
+
+      languages:[
+        "English",
+        "French",
+        "Kinyarwanda"
+      ],
+
+      specialties:[
+        "History",
+        "Adventure"
+      ],
+
+      city:"Kigali",
+
+      yearsExperience:5,
+
+      isVerified:true,
+
+      isAvailable:true,
+
+      status:"approved"
+
+    }
+
+  });
+
+
+
+  // CHEF USER
+
+  const chefUser = await prisma.user.upsert({
+
+    where:{
+      email:"chef@test.com"
+    },
+
+    update:{
+  fullName:"Eric Nshimiyimana",
+  roleKey:"guide",
+  profileType:"CHEF",
+  emailVerified:true
+},
+
+    create:{
+
+      email:"chef@test.com",
+
+      fullName:"Eric Nshimiyimana",
+
+      passwordHash:password,
+
+      roleKey:"guide",
+
+      profileType:"CHEF",
+
+      emailVerified:true
+
+    }
+
+  });
+
+
+
+  await prisma.guide.upsert({
+
+    where:{
+      userId:chefUser.id
+    },
+
+    update:{},
+
+    create:{
+
+      userId:chefUser.id,
+
+      fullName:"Eric Nshimiyimana",
+
+      bio:
+      "Traditional Rwandan cuisine chef",
+
+      specialties:[
+        "#Food",
+        "Homestyle"
+      ],
+
+      languages:[
+        "English",
+        "French",
+        "Kinyarwanda"
+      ],
+
+
+      city:"Kigali",
+
+
+      restaurantName:
+      "Fork Restaurant",
+
+
+      gastronomyCategory:
+      "homestyle",
+
+
+      experienceName:
+      "Traditional Kinyarwanda Feast",
+
+
+      chefTags:[
+        "Family recipes",
+        "Vegetarian friendly"
+      ],
+
+
+      menuCourses:[
+        {
+          course:"Starter",
+          description:"Isombe with smoked fish"
+        },
+        {
+          course:"Main",
+          description:"Goat with plantain"
+        }
+      ],
+
+
+      isVerified:true,
+
+      status:"approved"
+
+    }
+
+  });
+
+
+
+  // VENDOR
+
+  const vendorUser = await prisma.user.upsert({
+
+    where:{
+      email:"vendor@test.com"
+    },
+
+    update:{
+  fullName:"Hotel Owner",
+  roleKey:"vendor",
+  profileType:"HOTEL_OWNER",
+  emailVerified:true
+},
+
+    create:{
+
+      email:"vendor@test.com",
+
+      fullName:"Hotel Owner",
+
+      passwordHash:password,
+
+      roleKey:"vendor",
+
+      profileType:"HOTEL_OWNER",
+
+      emailVerified:true
+
+    }
+
+  });
+
+
+  await prisma.vendor.upsert({
+
+    where:{
+      ownerId:vendorUser.id
+    },
+
+    update:{},
+
+    create:{
+
+      ownerId:vendorUser.id,
+
+      slug:"five-volcanoes-test",
+
+      name:
+      "Five Volcanoes Hotel",
+
+      category:
+      "hotel",
+
+      description:
+      "Luxury hotel near Volcanoes National Park",
+
+      city:
+      "Musanze",
+
+      status:
+      "approved",
+
+      isVerified:true
+
+    }
+
+  });
+
+
+
+  // GUIDE COMPANY
+
+  const companyUser = await prisma.user.upsert({
+
+    where:{
+      email:"company@test.com"
+    },
+
+    update:{
+  fullName:"Volcano Adventures",
+  roleKey:"vendor",
+  profileType:"COMPANY_OWNER",
+  emailVerified:true
+},
+
+    create:{
+
+      email:"company@test.com",
+
+      fullName:"Volcano Adventures",
+
+      passwordHash:password,
+
+      roleKey:"vendor",
+
+      profileType:"COMPANY_OWNER",
+
+      emailVerified:true
+
+    }
+
+  });
+
+
+
+  await prisma.guideCompany.upsert({
+
+    where:{
+      ownerId:companyUser.id
+    },
+
+    update:{},
+
+    create:{
+
+      ownerId:companyUser.id,
+
+      slug:
+      "volcano-adventures",
+
+      name:
+      "Volcano Adventures",
+
+      description:
+      "Gorilla trekking and adventure company",
+
+      city:
+      "Musanze",
+
+      status:
+      "approved"
+
+    }
+
+  });
+
+
+  console.log("✅ Test users seeded");
+
+}
 
 
 async function seedCities() {
@@ -1054,38 +1479,114 @@ async function seedTours() {
 
 
 
-async function seedGuides(){
+async function seedGuides() {
 
-const chefs=[
+  const chefs = [
+    {
+      fullName: 'Eric Nshimiyimana',
+      emoji: '👨‍🍳',
+      bio: 'Self-taught home cook turned pop-up chef.',
+      specialties: ['#Food', 'Homestyle'],
+      languages: ['English', 'French', 'Kinyarwanda'],
+      city: 'Kigali',
+      hourlyRateCents: 3500,
+      restaurantName: 'Fork Restaurant',
+      gastronomyCategory: 'homestyle',
+      experienceName: 'Traditional Kinyarwanda Feast'
+    },
+    {
+      fullName: 'Alice Uwase',
+      emoji: '🌾',
+      bio: 'Farm-to-table supper club owner.',
+      specialties: ['#Food'],
+      languages: ['English', 'Kinyarwanda'],
+      city: 'Musanze',
+      hourlyRateCents: 4000,
+      restaurantName: 'Red Rocks',
+      gastronomyCategory: 'farmToTable',
+      experienceName: 'Volcanoes Farm Table'
+    },
+    {
+      fullName: 'Jean Bosco Habimana',
+      emoji: '🍲',
+      bio: 'Third-generation restaurateur specializing in slow-cooked stews.',
+      specialties: ['#Food', 'Traditional'],
+      languages: ['English', 'French', 'Kinyarwanda'],
+      city: 'Kigali',
+      hourlyRateCents: 3800,
+      restaurantName: 'Heaven Restaurant',
+      gastronomyCategory: 'traditional',
+      experienceName: 'Kigali Street Food Crawl'
+    },
+    {
+      fullName: 'Divine Mukamana',
+      emoji: '🍽️',
+      bio: 'Hotel-trained chef bringing fine dining to local ingredients.',
+      specialties: ['#Food', 'Hotel dining'],
+      languages: ['English', 'Kinyarwanda'],
+      city: 'Kigali',
+      hourlyRateCents: 5000,
+      restaurantName: 'Kigali Marriott',
+      gastronomyCategory: 'hotel',
+      experienceName: 'Modern Rwandan Tasting Menu'
+    },
+    {
+      fullName: 'Patrick Iradukunda',
+      emoji: '🥗',
+      bio: 'Vegetarian and vegan-focused chef using highland produce.',
+      specialties: ['#Food', 'Vegetarian'],
+      languages: ['English', 'French'],
+      city: 'Musanze',
+      hourlyRateCents: 3200,
+      restaurantName: 'Ubumwe Grande',
+      gastronomyCategory: 'vegetarian',
+      experienceName: 'Plant-Forward Volcanoes Menu'
+    },
+  ];
 
-{
-fullName:'Eric Nshimiyimana',
-emoji:'👨‍🍳',
-bio:'Self-taught home cook turned pop-up chef.',
-specialties:['#Food','Homestyle'],
-languages:['English','French','Kinyarwanda'],
-city:'Kigali',
-hourlyRateCents:3500,
-restaurantName:'Fork Restaurant',
-gastronomyCategory:'homestyle',
-experienceName:'Traditional Kinyarwanda Feast'
-},
+  const guides = [
+    {
+      fullName: 'Grace Ingabire',
+      emoji: '🦍',
+      bio: 'Certified gorilla trekking guide with 8 years in Volcanoes NP.',
+      specialties: ['Nature', 'Wildlife', 'Adventure'],
+      languages: ['English', 'French', 'Kinyarwanda'],
+      city: 'Musanze',
+      hourlyRateCents: 4500,
+      tourCompany: 'Amahoro Tours'
+    },
+    {
+      fullName: 'Samuel Rugema',
+      emoji: '🏛️',
+      bio: 'History graduate specializing in Kigali Genocide Memorial tours.',
+      specialties: ['Culture', 'History', 'Museum'],
+      languages: ['English', 'Kinyarwanda'],
+      city: 'Kigali',
+      hourlyRateCents: 3000,
+      tourCompany: 'Heritage Rwanda'
+    },
+    {
+      fullName: 'Claudine Mutesi',
+      emoji: '🥾',
+      bio: 'Mountain hiking specialist covering the Virunga range.',
+      specialties: ['Adventure', 'Hike', 'Trek'],
+      languages: ['English', 'French', 'Kinyarwanda'],
+      city: 'Musanze',
+      hourlyRateCents: 4200,
+      tourCompany: null
+    },
+    {
+      fullName: 'Emmanuel Byiringiro',
+      emoji: '🏙️',
+      bio: 'City tour guide covering Kigali\'s art, markets, and architecture.',
+      specialties: ['Culture', 'City tour'],
+      languages: ['English', 'Kinyarwanda'],
+      city: 'Kigali',
+      hourlyRateCents: 2800,
+      tourCompany: 'Kigali Walks'
+    },
+  ];
 
-
-{
-fullName:'Alice Uwase',
-emoji:'🌾',
-bio:'Farm-to-table supper club owner.',
-specialties:['#Food'],
-languages:['English','Kinyarwanda'],
-city:'Musanze',
-hourlyRateCents:4000,
-restaurantName:'Red Rocks',
-gastronomyCategory:'farmToTable',
-experienceName:'Volcanoes Farm Table'
-}
-
-];
 
 
 for(const chef of chefs){
@@ -1132,6 +1633,8 @@ console.log("✅ Guides seeded");
 async function main(){
 
  await seedRoles();
+
+ await seedUsers();
 
  await seedCities();
 

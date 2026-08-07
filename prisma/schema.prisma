@@ -8,7 +8,16 @@ datasource db {
   directUrl    = env("DIRECT_URL")
   relationMode = "prisma"
 }
-
+enum ProfileType {
+  TOURIST
+  TOUR_GUIDE
+  CHEF
+  HOTEL_OWNER
+  COMPANY_OWNER
+  VENDOR
+  CORPORATE_EMPLOYEE
+  ADMIN
+}
 /// Local user account. Email + bcrypt password hash + role pointer.
 model User {
   id                      String              @id @default(cuid())
@@ -23,6 +32,7 @@ model User {
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
   roleKey                 String              @default("user")
+  profileType             ProfileType             @default(TOURIST)
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
   cardNumber              String?
@@ -55,6 +65,7 @@ model User {
   identityDocUrls         String[]            @default([])
   identityRejectionReason String?
 }
+
 
 model WalletTransaction {
   id             String   @id @default(cuid())
