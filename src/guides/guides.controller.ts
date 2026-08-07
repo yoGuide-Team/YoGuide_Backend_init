@@ -238,6 +238,30 @@ export class GuidesController {
     return guide;
   }
 
+  @Patch('me')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Update the signed-in user's own guide profile",
+    description:
+      'Self-service edit for an already-approved guide/chef — bio, specialties, gastronomy fields (menu, story, restaurant info), etc. Requires status "approved"; use POST /guides/apply for the initial application or to resubmit after rejection.',
+  })
+  async updateMine(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateGuideDto) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    if (guide.status !== 'approved') {
+      throw new ForbiddenException('Your guide application must be approved before you can edit your profile.');
+    }
+    return this.prisma.guide.update({
+      where: { id: guide.id },
+      data: {
+        ...dto,
+        menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+        story: dto.story as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
   @Get('me/bookings')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
