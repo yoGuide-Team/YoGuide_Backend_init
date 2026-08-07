@@ -28,7 +28,7 @@ services:
       - DIRECT_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
       - JWT_SECRET=change-me-to-a-long-random-string
       - JWT_EXPIRES_IN=30d
-      - GOOGLE_CLIENT_ID=24803296444-vc5gsest1rgrbnljpn8g9qaai9cr9o5c.apps.googleusercontent.com
+      - GOOGLE_CLIENT_ID=723717591072-o0m3jehti8hhqllm2vpn1n6p3ih2nstt.apps.googleusercontent.com
       - FRONTEND_URL=yoguide://reset-password
       - GMAIL_USER=yoGuideafrica@gmail.com
       - GMAIL_APP_PASSWORD=sbaz biyw aght hjld
