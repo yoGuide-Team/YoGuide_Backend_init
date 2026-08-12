@@ -27,8 +27,14 @@ export class MailService {
     to: string;
     subject: string;
     html: string;
+    text?: string;
     from?: string;
   }) {
+    const stripHtml = (html?: string) => {
+      if (!html) return '';
+      // very small sanitizer -> plain-text fallback
+      return html.replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    };
     const from = options.from ?? this.getDefaultFromAddress();
     const gmailFrom = this.gmailUser ? `"yoGuide Team" <${this.gmailUser}>` : from;
 
@@ -41,6 +47,7 @@ export class MailService {
         to: options.to,
         subject: options.subject,
         html: options.html,
+        text: options.text ?? stripHtml(options.html),
       });
       this.logger.log(`Email sent via Gmail to ${options.to}`);
       return result;
@@ -52,6 +59,9 @@ export class MailService {
         to: options.to,
         subject: options.subject,
         html: options.html,
+        // Resend supports html; include a plaintext fallback as additional metadata
+        // (some clients/providers prefer a plain-text part)
+        text: options.text ?? stripHtml(options.html),
       });
       const resendResult = result as { error?: unknown };
       if (resendResult?.error) {
@@ -140,7 +150,7 @@ export class MailService {
     this.logger.warn(
       'No email provider configured: set RESEND_API_KEY or GMAIL_USER/GMAIL_APP_PASSWORD.',
     );
-    this.logEmailPreview({ from, to: options.to, subject: options.subject, html: options.html });
+    this.logEmailPreview({ from, to: options.to, subject: options.subject, html: options.html, text: options.text ?? stripHtml(options.html) });
   }
 
   private getDefaultFromAddress() {
@@ -171,33 +181,57 @@ export class MailService {
     from: string;
     subject: string;
     html: string;
+    text?: string;
   }) {
     this.logger.warn(`No working email provider configured for ${options.to}. Showing email preview in the server logs.`);
     this.logger.log(`Email preview for ${options.to}:
 From: ${options.from}
 Subject: ${options.subject}
 
-${options.html}`);
+HTML:
+${options.html}
+
+Text:
+${options.text ?? ''}`);
   }
 
   async sendPasswordResetEmail(email: string, name: string, resetUrl: string) {
     try {
-      await this.sendEmail({
-        from: this.resend ? this.resendFrom : undefined,
-        to: email,
-        subject: 'Reset your yoGuide password',
-        html: `
+      // Resolve frontend base from environment to avoid hardcoded localhost URLs
+      const frontendBase = (process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+
+      let finalResetUrl = resetUrl;
+      try {
+        const parsed = new URL(resetUrl);
+        // If caller passed a localhost URL (dev) we prefer the configured frontend base
+        if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+          finalResetUrl = `${frontendBase}${parsed.pathname}${parsed.search}`;
+        }
+      } catch (e) {
+        // not a full URL — assume it's a token and build the reset path
+        finalResetUrl = frontendBase.endsWith('/reset-password') ? `${frontendBase}?token=${resetUrl}` : `${frontendBase}/reset-password?token=${resetUrl}`;
+      }
+
+      // Prepare plain-text fallback for email clients that prefer plain text
+      const htmlBody = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
             <h2>Hello ${name},</h2>
             <p>You requested a password reset for your yoGuide account.</p>
             <p style="margin: 24px 0;">
-              <a href="${resetUrl}" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+              <a href="${finalResetUrl}" style="background-color: #0070f3; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
             </p>
             <p>If the button does not work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; color: #065f46;">${resetUrl}</p>
+            <p style="word-break: break-all; color: #065f46;">${finalResetUrl}</p>
             <p>This link expires in 30 minutes.</p>
           </div>
-        `,
+        `;
+
+      await this.sendEmail({
+        from: this.resend ? this.resendFrom : undefined,
+        to: email,
+        subject: 'Reset your yoGuide password',
+        html: htmlBody,
+        text: htmlBody.replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
       });
       this.logger.log(`Password reset email sent to ${email}`);
     } catch (error) {
