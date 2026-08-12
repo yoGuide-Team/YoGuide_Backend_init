@@ -26,7 +26,6 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
@@ -35,7 +34,7 @@ async function bootstrap() {
       status: 'ok',
       service: 'yoGuide backend',
       docs: '/docs',
-      health: '/api/health',
+      health: '/health',
       timestamp: new Date().toISOString(),
     });
   });

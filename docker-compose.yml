@@ -1,11 +1,9 @@
 services:
-  # Self-hosted Postgres. Skip/remove this service entirely if you're
-  # pointing DATABASE_URL/DIRECT_URL at the shared Supabase database
-  # instead — see .env.example and README-DEPLOYMENT.md.
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     container_name: yoguide-postgres
+    network_mode: host
     environment:
       POSTGRES_USER: yoguide
       POSTGRES_PASSWORD: yoguide
@@ -17,31 +15,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    networks:
-      - yoguide-net
 
   app:
     build: .
     restart: unless-stopped
     container_name: yoguide-app
-    # Loads every var from .env in this same folder (copy .env.example ->
-    # .env and fill it in first). Anything listed under `environment:`
-    # below overrides the .env file's value.
-    env_file:
-      - .env
+    network_mode: host
     environment:
       - NODE_ENV=production
-      - PORT=${PORT:-3030}
-    ports:
-      - "${PORT:-3030}:${PORT:-3030}"
+      - PORT=3031  # Changed from 3030 to 3031
+      - DATABASE_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
+      - DIRECT_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
+      - JWT_SECRET=change-me-to-a-long-random-string
+      - JWT_EXPIRES_IN=30d
+      - GOOGLE_CLIENT_ID=24803296444-vc5gsest1rgrbnljpn8g9qaai9cr9o5c.apps.googleusercontent.com
+      - FRONTEND_URL=yoguide://reset-password
+      - GMAIL_USER=yoGuideafrica@gmail.com
+      - GMAIL_APP_PASSWORD=umbwirenyiguhe
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - yoguide-net
-
-networks:
-  yoguide-net:
 
 volumes:
   yoguide-pg:
