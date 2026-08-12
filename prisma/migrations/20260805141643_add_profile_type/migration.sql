@@ -1,0 +1,5 @@
+-- CreateEnum
+CREATE TYPE "ProfileType" AS ENUM ('TOURIST', 'TOUR_GUIDE', 'CHEF', 'HOTEL_OWNER', 'COMPANY_OWNER', 'VENDOR', 'CORPORATE_EMPLOYEE');
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "profileType" "ProfileType" NOT NULL DEFAULT 'TOURIST';

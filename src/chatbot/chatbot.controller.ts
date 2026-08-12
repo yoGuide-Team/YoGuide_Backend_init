@@ -1,13 +1,39 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ChatbotService } from './chatbot.service';
+import { ChatQueryDto } from './dto/chat-query.dto';
 
-@Controller('api/chatbot')
+@Controller()
 export class ChatbotController {
   constructor(private readonly chatbotService: ChatbotService) {}
 
-@Post('ask') // Matches the mapped route: /api/chatbot/ask
-  async handleQuery(@Body() body: { text: string; userId?: string }) {
-    // Directly hands off to our newly fixed Gemini processQuery method
-    return this.chatbotService.processQuery(body.text, body.userId);
+  private getMessage(body: ChatQueryDto): string {
+    return (body.message || body.text || '').trim();
+  }
+
+  private async buildResponse(body: ChatQueryDto) {
+    const userMessage = this.getMessage(body);
+
+    if (!userMessage) {
+      return { reply: 'Please provide a message.' };
+    }
+
+    const result = await this.chatbotService.handleUserQuery(userMessage, body.userId);
+    return {
+      reply: result.text ?? 'How can I help you today?',
+      grounded: result.grounded ?? false,
+      contextSummary: result.contextSummary,
+    };
+  }
+
+  @Post('chat')
+  @HttpCode(HttpStatus.OK)
+  async handleChat(@Body() body: ChatQueryDto) {
+    return this.buildResponse(body);
+  }
+
+  @Post('chatbot/ask')
+  @HttpCode(HttpStatus.OK)
+  async handleChatAsk(@Body() body: ChatQueryDto) {
+    return this.buildResponse(body);
   }
 }

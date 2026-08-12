@@ -14,12 +14,20 @@ import { IdentityVerifiedGuard } from "./identity-verified.guard";
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>("JWT_SECRET"),
-        signOptions: {
-          expiresIn: config.get<string>("JWT_EXPIRES_IN") ?? "30d",
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>("JWT_SECRET");
+        if (!secret) {
+          throw new Error(
+            "Missing JWT_SECRET environment variable. Add JWT_SECRET to your .env file.",
+          );
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: config.get<string>("JWT_EXPIRES_IN") ?? "30d",
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

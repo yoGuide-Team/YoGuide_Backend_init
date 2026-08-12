@@ -8,7 +8,16 @@ datasource db {
   directUrl    = env("DIRECT_URL")
   relationMode = "prisma"
 }
-
+enum ProfileType {
+  TOURIST
+  TOUR_GUIDE
+  CHEF
+  HOTEL_OWNER
+  COMPANY_OWNER
+  VENDOR
+  CORPORATE_EMPLOYEE
+  ADMIN
+}
 /// Local user account. Email + bcrypt password hash + role pointer.
 model User {
   id                      String              @id @default(cuid())
@@ -23,6 +32,7 @@ model User {
   /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
   /// readable without a join.
   roleKey                 String              @default("user")
+  profileType             ProfileType             @default(TOURIST)
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
   cardNumber              String?
@@ -55,6 +65,7 @@ model User {
   identityDocUrls         String[]            @default([])
   identityRejectionReason String?
 }
+
 
 model WalletTransaction {
   id             String   @id @default(cuid())
@@ -288,11 +299,20 @@ model Phrase {
 
 /// A bookable tour package — moto, EV-car, walking, multi-day. Each tour
 /// carries a curated list of TourStops in order.
+enum TourCategory {
+  CITY
+  ADVENTURE
+  COMMUNITY
+  GASTRONOMY
+  CUSTOM
+}
+
 model Tour {
   id              String        @id @default(cuid())
   cityId          String?
   title           String
   description     String
+  category        TourCategory  @default(CITY)
   vehicleType     String
   durationMinutes Int
   priceCents      Int
@@ -300,20 +320,26 @@ model Tour {
   isCustom        Boolean       @default(false)
   coverImage      String?
   highlights      String[]      @default([])
+  includes        String[]      @default([])
+  maxGroupSize    Int?          @default(10)
+  rating          Float         @default(5.0)
+  reviewCount     Int           @default(0)
   isPublished     Boolean       @default(true)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
   city            City?         @relation(fields: [cityId], references: [id])
   stops           TourStop[]
   bookings        Booking[]
-  /// Package ownership — a tour may belong to a self-employed guide, a
-  /// guide company, or neither (admin-created). Never both at once in
-  /// practice, but not DB-enforced — application code assigns exactly one.
+
   guideId         String?
   guide           Guide?        @relation(fields: [guideId], references: [id], onDelete: SetNull)
+
   companyId       String?
   company         GuideCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
 
+  @@index([category])
+  @@index([cityId])
   @@index([guideId])
   @@index([companyId])
 }
@@ -358,6 +384,18 @@ model Guide {
   isVerified      Boolean         @default(false)
   isAvailable     Boolean         @default(true)
   city            String?
+  /// ── Gastronomy-only fields ──
+  /// Populated for guides whose `specialties` includes "#Food" (the
+  /// frontend's chef convention). Null for plain tour guides.
+  restaurantName     String?
+  gastronomyCategory String?
+  experienceName     String?
+  gastronomyArea     String?
+  chefTags           String[]        @default([])
+  /// Fixed tasting-menu courses: [{course, description}, ...]
+  menuCourses        Json?
+  /// Video-teaser narrative: {title, durationLabel, text}
+  story              Json?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   documents       GuideDocument[]

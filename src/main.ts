@@ -20,12 +20,24 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // ── CORS DISABLED ──────────────────────────────────────
-  // CORS is handled by Nginx proxy, not the backend
-  // app.enableCors(); // Completely removed
+  app.enableCors({
+    origin: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
+
+  app.getHttpAdapter().get('/', (req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'yoGuide backend',
+      docs: '/docs',
+      health: '/health',
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   // ── Swagger / OpenAPI ──────────────────────────────────────
   const swaggerConfig = new DocumentBuilder()
@@ -60,10 +72,25 @@ async function bootstrap() {
     customSiteTitle: 'yoGuide API · v0.6.0',
   });
 
+  const startOnPort = async (port: number) => {
+    try {
+      await app.listen(port,'0.0.0.0');
+      Logger.log(`yoGuide backend listening on http://0.0.0.0:${port}`, 'Bootstrap');
+      Logger.log(`API docs: http://0.0.0.0:${port}/docs`, 'Bootstrap');
+    } catch (error: any) {
+      if (error?.code === 'EADDRINUSE') {
+        const nextPort = port + 1;
+        logger.warn(`Port ${port} is busy, retrying on ${nextPort}.`);
+        await startOnPort(nextPort);
+        return;
+      }
+      throw error;
+    }
+  };
+
   const port = Number(process.env.PORT ?? 3030);
-  await app.listen(port);
-  Logger.log(`yoGuide backend listening on http://localhost:${port}`, 'Bootstrap');
-  Logger.log(`API docs: http://localhost:${port}/docs`, 'Bootstrap');
+  await startOnPort(port);
+
 }
 
 bootstrap();

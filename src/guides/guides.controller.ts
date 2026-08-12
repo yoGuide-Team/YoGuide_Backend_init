@@ -16,14 +16,19 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Max,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -33,13 +38,39 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AuditLogService } from '../audit/audit-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
+import { TourCategory } from 'src/tours/tours.controller';
 
 // Same set AdminToursController's CreateTourDto validates against
 // (src/tours/tours.controller.ts) — packages created here are plain Tour
 // rows, so they must satisfy the same constraint.
 const PACKAGE_VEHICLE_TYPES = ['motorbike', 'ev_car', 'walking', 'minivan'] as const;
+// Matches the frontend's GastronomyCategory enum (lib/shared/tours.dart).
+const GASTRONOMY_CATEGORIES = ['homestyle', 'hotelChefsTable', 'marketStreetFood', 'farmToTable'] as const;
 
-class ApplyGuideDto {
+class MenuCourseDto {
+  @IsString() @MinLength(1) course!: string;
+  @IsString() @MinLength(1) description!: string;
+}
+
+class ChefStoryDto {
+  @IsString() @MinLength(1) title!: string;
+  @IsString() @MinLength(1) durationLabel!: string;
+  @IsString() @MinLength(1) text!: string;
+}
+
+// Gastronomy-only fields shared by apply/create/update — a guide is a chef
+// when `specialties` includes the frontend's "#Food" convention.
+class GastronomyFieldsDto {
+  @IsOptional() @IsString() restaurantName?: string;
+  @IsOptional() @IsIn(GASTRONOMY_CATEGORIES) gastronomyCategory?: string;
+  @IsOptional() @IsString() experienceName?: string;
+  @IsOptional() @IsString() gastronomyArea?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) chefTags?: string[];
+  @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => MenuCourseDto) menuCourses?: MenuCourseDto[];
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => ChefStoryDto) story?: ChefStoryDto;
+}
+
+class ApplyGuideDto extends GastronomyFieldsDto {
   @IsString() @MinLength(2) fullName!: string;
   @IsOptional() @IsString() bio?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) specialties?: string[];
@@ -48,7 +79,7 @@ class ApplyGuideDto {
   @IsOptional() @IsString() city?: string;
 }
 
-class CreateGuideDto {
+class CreateGuideDto extends GastronomyFieldsDto {
   @IsString() @MinLength(2) fullName!: string;
   @IsOptional() @IsString() emoji?: string;
   @IsOptional() @IsString() bio?: string;
@@ -61,7 +92,7 @@ class CreateGuideDto {
   @IsOptional() @IsBoolean() isVerified?: boolean;
 }
 
-class UpdateGuideDto {
+class UpdateGuideDto extends GastronomyFieldsDto {
   @IsOptional() @IsString() fullName?: string;
   @IsOptional() @IsString() emoji?: string;
   @IsOptional() @IsString() bio?: string;
@@ -92,6 +123,7 @@ class UpsertPackageDto {
   @IsString() @MinLength(3) title!: string;
   @IsString() @MinLength(10) description!: string;
   @IsIn(PACKAGE_VEHICLE_TYPES) vehicleType!: string;
+  @IsOptional() @IsEnum(TourCategory) category?: TourCategory;
   @IsInt() @Min(15) durationMinutes!: number;
   @IsInt() @Min(0) priceCents!: number;
   @IsOptional() @IsString() currency?: string;
@@ -164,6 +196,13 @@ export class GuidesController {
           status: 'pending',
           rejectionReason: null,
           isVerified: false,
+          restaurantName: dto.restaurantName,
+          gastronomyCategory: dto.gastronomyCategory,
+          experienceName: dto.experienceName,
+          gastronomyArea: dto.gastronomyArea,
+          chefTags: dto.chefTags ?? [],
+          menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+          story: dto.story as unknown as Prisma.InputJsonValue,
         },
       });
     }
@@ -178,6 +217,13 @@ export class GuidesController {
         city: dto.city,
         isVerified: false,
         status: 'pending',
+        restaurantName: dto.restaurantName,
+        gastronomyCategory: dto.gastronomyCategory,
+        experienceName: dto.experienceName,
+        gastronomyArea: dto.gastronomyArea,
+        chefTags: dto.chefTags ?? [],
+        menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+        story: dto.story as unknown as Prisma.InputJsonValue,
       },
     });
   }
@@ -190,6 +236,30 @@ export class GuidesController {
     const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
     if (!guide) throw new NotFoundException('No guide application found for this account.');
     return guide;
+  }
+
+  @Patch('me')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Update the signed-in user's own guide profile",
+    description:
+      'Self-service edit for an already-approved guide/chef — bio, specialties, gastronomy fields (menu, story, restaurant info), etc. Requires status "approved"; use POST /guides/apply for the initial application or to resubmit after rejection.',
+  })
+  async updateMine(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateGuideDto) {
+    const guide = await this.prisma.guide.findUnique({ where: { userId: user.id } });
+    if (!guide) throw new NotFoundException('No guide application found for this account.');
+    if (guide.status !== 'approved') {
+      throw new ForbiddenException('Your guide application must be approved before you can edit your profile.');
+    }
+    return this.prisma.guide.update({
+      where: { id: guide.id },
+      data: {
+        ...dto,
+        menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+        story: dto.story as unknown as Prisma.InputJsonValue,
+      },
+    });
   }
 
   @Get('me/bookings')
@@ -234,7 +304,11 @@ export class GuidesController {
       throw new ForbiddenException('Your guide application must be approved before you can publish packages.');
     }
     return this.prisma.tour.create({
-      data: { ...dto, guideId: guide.id, highlights: dto.highlights ?? [] },
+      data: {
+        ...dto,
+        guideId: guide.id,
+        highlights: dto.highlights ?? [],
+      },
       include: { stops: true },
     });
   }
@@ -254,7 +328,10 @@ export class GuidesController {
     if (!tour || tour.guideId !== guide.id) {
       throw new NotFoundException('Package not found on your guide profile.');
     }
-    return this.prisma.tour.update({ where: { id }, data: dto });
+    return this.prisma.tour.update({
+      where: { id },
+      data: { ...dto },
+    });
   }
 
   @Delete('me/packages/:id')
@@ -348,6 +425,9 @@ export class AdminGuidesController {
         ...dto,
         specialties: dto.specialties ?? [],
         languages: dto.languages ?? [],
+        chefTags: dto.chefTags ?? [],
+        menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+        story: dto.story as unknown as Prisma.InputJsonValue,
       },
     });
   }
@@ -358,7 +438,14 @@ export class AdminGuidesController {
   async update(@Param('id') id: string, @Body() dto: UpdateGuideDto) {
     const exists = await this.prisma.guide.findUnique({ where: { id } });
     if (!exists) throw new NotFoundException(`Guide '${id}' not found.`);
-    return this.prisma.guide.update({ where: { id }, data: dto });
+    return this.prisma.guide.update({
+      where: { id },
+      data: {
+        ...dto,
+        menuCourses: dto.menuCourses as unknown as Prisma.InputJsonValue,
+        story: dto.story as unknown as Prisma.InputJsonValue,
+      },
+    });
   }
 
   @Delete(':id')

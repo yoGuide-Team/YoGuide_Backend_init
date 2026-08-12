@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { CreateBookingDto } from './dto';
 
 const VALID_STATUSES = new Set([
@@ -18,7 +20,11 @@ const VALID_STATUSES = new Set([
 
 @Injectable()
 export class BookingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(userId: string, dto: CreateBookingDto) {
     if (dto.placeId) {
@@ -28,6 +34,15 @@ export class BookingsService {
       });
       if (!exists) {
         throw new BadRequestException(`Place '${dto.placeId}' does not exist.`);
+      }
+    }
+    if (dto.tourId) {
+      const exists = await this.prisma.tour.findUnique({
+        where: { id: dto.tourId },
+        select: { id: true },
+      });
+      if (!exists) {
+        throw new BadRequestException(`Tour '${dto.tourId}' does not exist.`);
       }
     }
     if (dto.guideId) {
@@ -49,9 +64,11 @@ export class BookingsService {
       }
     }
 
+    let result: ReturnType<BookingsService['toDto']>;
+
     // Wallet path: validate balance + debit + create transactions atomically.
     if (dto.paymentMethod === 'wallet') {
-      return this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async (tx) => {
         const wallet = await this.ensureWallet(tx, userId);
         if (wallet.balanceCents < dto.totalCents) {
           throw new BadRequestException(
@@ -86,26 +103,56 @@ export class BookingsService {
         });
         return this.findOneInTx(tx, booking.id);
       });
+    } else {
+      // Off-wallet path: booking starts pending; the corresponding charge is
+      // pending too. The operator (or a future webhook) settles it later.
+      result = await this.prisma.$transaction(async (tx) => {
+        const booking = await tx.booking.create({
+          data: this.buildCreateData(userId, dto, 'pending'),
+        });
+        await tx.bookingTransaction.create({
+          data: {
+            bookingId: booking.id,
+            kind: 'charge',
+            method: dto.paymentMethod,
+            amountCents: dto.totalCents,
+            currency: booking.currency,
+            status: 'pending',
+          },
+        });
+        return this.findOneInTx(tx, booking.id);
+      });
     }
 
-    // Off-wallet path: booking starts pending; the corresponding charge is
-    // pending too. The operator (or a future webhook) settles it later.
-    return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.create({
-        data: this.buildCreateData(userId, dto, 'pending'),
-      });
-      await tx.bookingTransaction.create({
-        data: {
-          bookingId: booking.id,
-          kind: 'charge',
-          method: dto.paymentMethod,
-          amountCents: dto.totalCents,
+    await this.notifyBookingCreated(result);
+    return result;
+  }
+
+  /** Fires the booking-confirmation email + in-app notification. Best-effort
+   * — failures here must never fail the booking itself. */
+  private async notifyBookingCreated(booking: ReturnType<BookingsService['toDto']>) {
+    if (!booking.user?.email) return;
+    const title = booking.tour?.title ?? booking.guide?.fullName ?? booking.place?.name ?? null;
+    await Promise.allSettled([
+      this.mail.sendBookingConfirmationEmail(
+        booking.user.email,
+        booking.user.fullName ?? 'there',
+        {
+          id: booking.id,
+          type: booking.type,
+          totalCents: booking.totalCents,
           currency: booking.currency,
-          status: 'pending',
+          scheduledAt: booking.scheduledAt,
+          title,
         },
-      });
-      return this.findOneInTx(tx, booking.id);
-    });
+      ),
+      this.notifications.notifyBookingConfirmed(
+        booking.userId,
+        booking.id,
+        booking.totalCents,
+        booking.currency,
+      ),
+    ]);
   }
 
   async listForUser(userId: string) {
@@ -220,6 +267,7 @@ export class BookingsService {
       totalCents: dto.totalCents,
       currency: dto.currency ?? 'USD',
       placeId: dto.placeId,
+      tourId: dto.tourId,
       guideId: dto.guideId,
       vendorId: dto.vendorId,
       details: (dto.details ?? {}) as Prisma.InputJsonValue,
@@ -238,6 +286,8 @@ export class BookingsService {
     return {
       transactions: { orderBy: { createdAt: 'asc' as const } },
       place: { select: { id: true, name: true, kind: true } },
+      tour: { select: { id: true, title: true, category: true } },
+      guide: { select: { id: true, fullName: true } },
       user: { select: { id: true, email: true, fullName: true } },
     };
   }
@@ -263,6 +313,10 @@ export class BookingsService {
       place: b.place
         ? { id: b.place.id, name: b.place.name, kind: b.place.kind }
         : null,
+      tourId: b.tourId,
+      tour: b.tour ? { id: b.tour.id, title: b.tour.title, category: b.tour.category } : null,
+      guideId: b.guideId,
+      guide: b.guide ? { id: b.guide.id, fullName: b.guide.fullName } : null,
       user: b.user
         ? { id: b.user.id, email: b.user.email, fullName: b.user.fullName }
         : null,

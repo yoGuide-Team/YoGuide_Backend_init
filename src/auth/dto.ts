@@ -50,11 +50,33 @@ export class GoogleLoginDto {
   @ApiProperty({
     description:
       "Google ID token from the Flutter `google_sign_in` package — " +
-      "`(await googleUser.authentication).idToken`.",
+      "either `idToken`, `token`, or `credential` is accepted.",
     example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    required: false,
   })
+  @IsOptional()
   @IsString()
-  idToken!: string;
+  idToken?: string;
+
+  @ApiProperty({
+    description:
+      "Alternate field name for the Google ID token. Accepted for compatibility with frontend payloads.",
+    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  token?: string;
+
+  @ApiProperty({
+    description:
+      "Fallback field name used by some Google libraries. Accepted for compatibility with frontend payloads.",
+    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  credential?: string;
 }
 export class ForgotPasswordDto {
   @ApiProperty({

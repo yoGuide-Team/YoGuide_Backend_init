@@ -15,6 +15,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -39,7 +40,10 @@ class ModerateReviewDto {
 @ApiBearerAuth('access-token')
 @Controller('reviews')
 export class ReviewsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -84,9 +88,13 @@ export class ReviewsController {
         'At least one of placeId, guideId, tourId, or vendorId must be provided.',
       );
     }
-    return this.prisma.review.create({
+    const review = await this.prisma.review.create({
       data: { ...dto, authorId: user.id },
     });
+    await this.notifications
+      .notifyReviewSubmitted(user.id, dto.rating)
+      .catch(() => {});
+    return review;
   }
 
   @Get('mine')

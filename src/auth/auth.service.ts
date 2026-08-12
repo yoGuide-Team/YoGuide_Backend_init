@@ -1,6 +1,9 @@
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
   BadRequestException,
@@ -35,15 +38,19 @@ export interface RegisterResult {
 export class AuthService {
   private readonly googleClient: OAuth2Client;
 
+  private readonly googleClientId: string;
+
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mailService: MailService,
   ) {
-    this.googleClient = new OAuth2Client(
-      this.config.get<string>("GOOGLE_CLIENT_ID"),
-    );
+    this.googleClientId =
+      (process.env.GOOGLE_CLIENT_ID?.trim() || this.config.get<string>("GOOGLE_CLIENT_ID")?.trim()) ?? "";
+    this.googleClient = new OAuth2Client(this.googleClientId || undefined);
   }
 
   // ── Email + password register ─────────────────────────────────────────────
@@ -68,7 +75,9 @@ export class AuthService {
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
-      throw new ConflictException("An account with that email already exists.");
+      throw new ConflictException(
+        "An account with this email already exists. Please log in.",
+      );
     }
 
     const role = await this.prisma.role.findUnique({
@@ -121,7 +130,12 @@ export class AuthService {
   }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !user.passwordHash) {
+    if (!user) {
+      throw new NotFoundException(
+        "No account found with this email. Please sign up first.",
+      );
+    }
+    if (!user.passwordHash) {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
@@ -159,10 +173,21 @@ export class AuthService {
   // ── Google Sign-In ────────────────────────────────────────────────────────
 
   async loginWithGoogle(token: string): Promise<AuthSession> {
-    const clientId = this.config.get<string>("GOOGLE_CLIENT_ID");
+    const clientId = this.googleClientId;
     if (!clientId) {
       throw new UnauthorizedException(
         "Google Sign-In is not configured on this server.",
+      );
+    }
+
+    const idToken = token?.trim();
+    if (!idToken) {
+      throw new HttpException(
+        {
+          message: 'Google authentication failed',
+          error: 'Google token is required.',
+        },
+        HttpStatus.UNAUTHORIZED,
       );
     }
 
@@ -171,34 +196,86 @@ export class AuthService {
     let name: string | undefined;
     let picture: string | undefined;
 
-    const looksLikeJwt = token.split(".").length === 3;
+    const audience = process.env.GOOGLE_CLIENT_ID?.trim() || clientId;
+
+    // Debug: surface expected audience and a short token preview so front/backend mismatch
+    console.log('Google Sign-In: Expected Audience:', audience);
+    console.log('Google Sign-In: token preview:', idToken?.slice(0, 12) + '...');
+
+    // Try verifying as an ID token (JWT) first — used on Android/iOS.
+    // If that fails, treat it as an access token (used on web) and verify
+    // via Google's tokeninfo endpoint.
+    const looksLikeJwt = token.split('.')?.length === 3;
 
     if (looksLikeJwt) {
       let ticket;
       try {
         ticket = await this.googleClient.verifyIdToken({
-          idToken: token,
-          audience: clientId,
+          idToken: idToken,
+          audience,
         });
-      } catch {
-        throw new UnauthorizedException("Invalid Google ID token.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid Google ID token.';
+        // Log full error for diagnostics (requested)
+        console.error('Google Token Verification Error:', error);
+        this.logger.error(
+          `Google authentication failed: ${message}`,
+          error instanceof Error ? error.stack : undefined,
+          AuthService.name,
+        );
+        throw new HttpException(
+          {
+            message: 'Google authentication failed',
+            error: message,
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
-      const payload = ticket.getPayload();
-      if (!payload?.email) {
-        throw new UnauthorizedException(
-          "Google token is missing required fields.",
+      const payload = ticket?.getPayload();
+      if (!payload?.email || !payload.sub) {
+        this.logger.error(
+          'Google authentication failed: token payload missing required fields',
+          undefined,
+          AuthService.name,
+        );
+        throw new HttpException(
+          {
+            message: 'Google authentication failed',
+            error: 'Google token is missing required fields.',
+          },
+          HttpStatus.UNAUTHORIZED,
         );
       }
       googleId = payload.sub;
       email = payload.email;
-      name = payload.name;
+      name = payload.name ?? payload.given_name;
       picture = payload.picture;
     } else {
+      // Access token path — used by google_sign_in on web.
+      // Verify via Google's userinfo endpoint.
+      console.log('Google Sign-In: Verifying access token via userinfo endpoint (non-JWT).');
       const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        throw new UnauthorizedException("Invalid Google access token.");
+        // Log response body if available for diagnostics
+        let bodyText = '';
+        try {
+          bodyText = await res.text();
+        } catch {}
+        console.error('Google access token verification failed:', res.status, bodyText);
+        this.logger.error(
+          `Google authentication failed: access token verification returned ${res.status}`,
+          undefined,
+          AuthService.name,
+        );
+        throw new HttpException(
+          {
+            message: 'Google authentication failed',
+            error: 'Invalid Google access token.',
+          },
+          HttpStatus.UNAUTHORIZED,
+        );
       }
       const info = (await res.json()) as {
         sub: string;
@@ -208,8 +285,17 @@ export class AuthService {
         email_verified?: boolean;
       };
       if (!info.email || !info.sub) {
-        throw new UnauthorizedException(
-          "Google token is missing required fields.",
+        this.logger.error(
+          'Google authentication failed: userinfo payload missing required fields',
+          undefined,
+          AuthService.name,
+        );
+        throw new HttpException(
+          {
+            message: 'Google authentication failed',
+            error: 'Google token is missing required fields.',
+          },
+          HttpStatus.UNAUTHORIZED,
         );
       }
       googleId = info.sub;
@@ -218,8 +304,9 @@ export class AuthService {
       picture = info.picture;
     }
 
-    let user = await this.prisma.user.findFirst({
-      where: { OR: [{ googleId }, { email: email.toLowerCase() }] },
+    // Find or create the user by verified Google email.
+    let user = await this.prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
     });
 
     if (user) {
@@ -240,11 +327,14 @@ export class AuthService {
       if (!role) {
         throw new NotFoundException("Default role 'user' is not configured.");
       }
+      const safeName = name
+        ? name.trim()
+        : email.split("@")[0].replace(/^[a-z]/, (c) => c.toUpperCase());
       user = await this.prisma.user.create({
         data: {
           email: email.toLowerCase(),
           passwordHash: "",
-          fullName: name ?? null,
+          fullName: safeName || null,
           avatarUrl: picture ?? null,
           googleId,
           roleKey: "user",

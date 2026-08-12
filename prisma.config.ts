@@ -8,9 +8,9 @@ export default defineConfig({
   // Point to the engine you are running (required for Prisma v7)
   engine: "classic",
 
-  // Database URL loaded securely via the config helper
+  // Database URL loaded securely via the config helper (Use DIRECT_URL for CLI operations)
   datasource: {
-    url: env("DATABASE_URL"),
+    url: env("DIRECT_URL"),
   },
 
   // Configures migration behaviors and links your TS seed file
