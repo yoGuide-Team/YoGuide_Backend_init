@@ -11,59 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  IsArray,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-  Min,
-} from 'class-validator';
-import { GuideType, Language } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class GuideProfileBodyDto {
-  @IsString()
-  userId!: string;
-
-  @IsEnum(GuideType)
-  guideType!: GuideType;
-
-  @IsOptional()
-  @IsString()
-  companyName?: string;
-
-  @IsArray()
-  @IsEnum(Language, { each: true })
-  languages!: Language[];
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  numberOfTours?: number;
-}
-
-class UpdateGuideProfileDto {
-  @IsOptional()
-  @IsEnum(GuideType)
-  guideType?: GuideType;
-
-  @IsOptional()
-  @IsString()
-  companyName?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsEnum(Language, { each: true })
-  languages?: Language[];
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  numberOfTours?: number;
-}
+import { GuideProfileBodyDto, UpdateGuideProfileDto } from './dto/admin-guide-profiles.dto';
 
 @ApiTags('Admin · Guide Profiles')
 @ApiBearerAuth('access-token')

@@ -10,19 +10,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsString } from 'class-validator';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class GuideVehicleBodyDto {
-  @IsString()
-  guideId!: string;
-
-  @IsString()
-  vehicleId!: string;
-}
+import { GuideVehicleBodyDto } from './dto/admin-guide-vehicles.dto';
 
 @ApiTags('Admin · Guide Vehicles')
 @ApiBearerAuth('access-token')
@@ -33,6 +25,8 @@ export class AdminGuideVehiclesController {
 
   @Get()
   @ApiOperation({ summary: 'List guide-vehicle assignments' })
+  @ApiQuery({ name: 'guideId', required: false, description: 'Filter by guide profile id (UUID)' })
+  @ApiQuery({ name: 'vehicleId', required: false, description: 'Filter by vehicle id (UUID)' })
   list(@Query('guideId') guideId?: string, @Query('vehicleId') vehicleId?: string) {
     return this.prisma.guideVehicle.findMany({
       where: {

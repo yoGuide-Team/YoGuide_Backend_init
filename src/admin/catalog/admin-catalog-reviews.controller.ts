@@ -10,45 +10,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class ReviewBodyDto {
-  @IsString()
-  userId!: string;
-
-  @IsOptional()
-  @IsString()
-  guideId?: string;
-
-  @IsOptional()
-  @IsString()
-  packageId?: string;
-
-  @IsOptional()
-  @IsString()
-  message?: string;
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  starRating!: number;
-}
-
-class UpdateReviewDto {
-  @IsOptional()
-  @IsString()
-  message?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  starRating?: number;
-}
+import { ReviewBodyDto, UpdateReviewDto } from './dto/admin-catalog-reviews.dto';
 
 @ApiTags('Admin · Reviews')
 @ApiBearerAuth('access-token')
@@ -59,6 +25,9 @@ export class AdminCatalogReviewsController {
 
   @Get()
   @ApiOperation({ summary: 'List reviews' })
+  @ApiQuery({ name: 'userId', required: false, description: 'Filter by user id (UUID)' })
+  @ApiQuery({ name: 'guideId', required: false, description: 'Filter by guide profile id (UUID)' })
+  @ApiQuery({ name: 'packageId', required: false, description: 'Filter by package id (UUID)' })
   list(
     @Query('userId') userId?: string,
     @Query('guideId') guideId?: string,

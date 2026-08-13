@@ -11,32 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsInt, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class VehicleBodyDto {
-  @IsString()
-  @MinLength(2)
-  name!: string;
-
-  @IsOptional()
-  @IsString()
-  icon?: string;
-
-  @IsInt()
-  @Min(1)
-  seats!: number;
-
-  @IsNumber()
-  @Min(0)
-  pricePerHour!: number;
-
-  @IsNumber()
-  @Min(0)
-  pricePerDay!: number;
-}
+import { VehicleBodyDto } from './dto/admin-vehicles.dto';
 
 @ApiTags('Admin · Vehicles')
 @ApiBearerAuth('access-token')

@@ -11,89 +11,16 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  IsEnum,
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  Min,
-  MinLength,
-} from 'class-validator';
-import { MediaType } from '@prisma/client';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class PackageBodyDto {
-  @IsString()
-  tourTypeId!: string;
-
-  @IsString()
-  @MinLength(2)
-  name!: string;
-
-  @IsString()
-  @MinLength(2)
-  description!: string;
-
-  @IsInt()
-  @Min(1)
-  durationHours!: number;
-
-  @IsNumber()
-  @Min(0)
-  price!: number;
-}
-
-class UpdatePackageDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  description?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  durationHours?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  price?: number;
-}
-
-class PackageTourBodyDto {
-  @IsString()
-  @MinLength(1)
-  title!: string;
-
-  @IsString()
-  @MinLength(1)
-  description!: string;
-
-  @IsInt()
-  @Min(1)
-  duration!: number;
-
-  @IsNumber()
-  @Min(0)
-  price!: number;
-}
-
-class PackageMediaBodyDto {
-  @IsString()
-  url!: string;
-
-  @IsEnum(MediaType)
-  type!: MediaType;
-}
+import {
+  PackageBodyDto,
+  PackageMediaBodyDto,
+  PackageTourBodyDto,
+  UpdatePackageDto,
+} from './dto/admin-packages.dto';
 
 @ApiTags('Admin · Packages')
 @ApiBearerAuth('access-token')
@@ -104,6 +31,7 @@ export class AdminPackagesController {
 
   @Get()
   @ApiOperation({ summary: 'List packages' })
+  @ApiQuery({ name: 'tourTypeId', required: false, description: 'Filter by tour type id (UUID)' })
   list(@Query('tourTypeId') tourTypeId?: string) {
     return this.prisma.package.findMany({
       where: tourTypeId ? { tourTypeId } : undefined,

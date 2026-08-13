@@ -11,136 +11,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsDateString,
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  MinLength,
-} from 'class-validator';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
-import { Language, UserRole, VisitorType } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class CreateUserDto {
-  @IsString()
-  @MinLength(2)
-  fullName!: string;
-
-  @IsEmail()
-  email!: string;
-
-  @IsOptional()
-  @IsString()
-  phone?: string;
-
-  @IsString()
-  @MinLength(8)
-  password!: string;
-
-  @IsString()
-  nationality!: string;
-
-  @IsEnum(UserRole)
-  role!: UserRole;
-
-  @IsOptional()
-  @IsEnum(VisitorType)
-  visitorType?: VisitorType;
-
-  @IsOptional()
-  @IsString()
-  profileImage?: string;
-
-  @IsOptional()
-  @IsDateString()
-  arrivalDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  departureDate?: string;
-
-  @IsOptional()
-  @IsEnum(Language)
-  defaultLanguage?: Language;
-
-  @IsOptional()
-  @IsString()
-  currentRegionId?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  inAppNotifications?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  emailNotifications?: boolean;
-}
-
-class UpdateUserDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  fullName?: string;
-
-  @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @IsOptional()
-  @IsString()
-  phone?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(8)
-  password?: string;
-
-  @IsOptional()
-  @IsString()
-  nationality?: string;
-
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
-
-  @IsOptional()
-  @IsEnum(VisitorType)
-  visitorType?: VisitorType;
-
-  @IsOptional()
-  @IsString()
-  profileImage?: string;
-
-  @IsOptional()
-  @IsDateString()
-  arrivalDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  departureDate?: string;
-
-  @IsOptional()
-  @IsEnum(Language)
-  defaultLanguage?: Language;
-
-  @IsOptional()
-  @IsString()
-  currentRegionId?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  inAppNotifications?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  emailNotifications?: boolean;
-}
+import { CreateUserDto, UpdateUserDto } from './dto/admin-catalog-users.dto';
 
 @ApiTags('Admin · Users')
 @ApiBearerAuth('access-token')
@@ -151,6 +28,7 @@ export class AdminCatalogUsersController {
 
   @Get()
   @ApiOperation({ summary: 'List users' })
+  @ApiQuery({ name: 'role', required: false, enum: UserRole, enumName: 'UserRole' })
   list(@Query('role') role?: UserRole) {
     return this.prisma.user.findMany({
       where: role ? { role } : undefined,
@@ -164,6 +42,7 @@ export class AdminCatalogUsersController {
         role: true,
         visitorType: true,
         profileImage: true,
+        emailVerified: true,
         defaultLanguage: true,
         currentRegionId: true,
         createdAt: true,
@@ -212,6 +91,7 @@ export class AdminCatalogUsersController {
         role: dto.role,
         visitorType: dto.visitorType,
         profileImage: dto.profileImage,
+        emailVerified: true,
         arrivalDate: dto.arrivalDate ? new Date(dto.arrivalDate) : undefined,
         departureDate: dto.departureDate ? new Date(dto.departureDate) : undefined,
         defaultLanguage: dto.defaultLanguage,

@@ -71,6 +71,12 @@ model User {
   role               UserRole
   visitorType        VisitorType?
   profileImage       String?
+  googleId           String?       @unique
+  emailVerified      Boolean       @default(false)
+  otpCodeHash        String?
+  otpExpiresAt       DateTime?
+  passwordResetToken String?
+  passwordResetExpiresAt DateTime?
   arrivalDate        DateTime?
   departureDate      DateTime?
   defaultLanguage    Language?

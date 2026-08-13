@@ -11,26 +11,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class TourTypeBodyDto {
-  @IsString()
-  regionId!: string;
-
-  @IsString()
-  @MinLength(2)
-  name!: string;
-}
-
-class UpdateTourTypeDto {
-  @IsString()
-  @MinLength(2)
-  name!: string;
-}
+import { TourTypeBodyDto, UpdateTourTypeDto } from './dto/admin-tour-types.dto';
 
 @ApiTags('Admin · Tour Types')
 @ApiBearerAuth('access-token')
@@ -41,6 +26,7 @@ export class AdminTourTypesController {
 
   @Get()
   @ApiOperation({ summary: 'List tour types' })
+  @ApiQuery({ name: 'regionId', required: false, description: 'Filter by region id (UUID)' })
   list(@Query('regionId') regionId?: string) {
     return this.prisma.tourType.findMany({
       where: regionId ? { regionId } : undefined,

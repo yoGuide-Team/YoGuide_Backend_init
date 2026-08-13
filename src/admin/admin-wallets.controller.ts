@@ -9,22 +9,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsInt, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminRoleGuard } from './guards/admin-role.guard';
-
-class WalletAdjustmentDto {
-  @IsInt()
-  amountCents!: number;
-
-  @IsIn(['adjustment', 'topup', 'refund', 'debit'])
-  kind!: string;
-
-  @IsOptional()
-  @IsString()
-  notes?: string;
-}
+import { WalletAdjustmentDto } from './dto/admin-wallets.dto';
 
 @ApiTags('Admin · Wallets')
 @ApiBearerAuth('access-token')

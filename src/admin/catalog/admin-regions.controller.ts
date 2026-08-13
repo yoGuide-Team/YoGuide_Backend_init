@@ -11,16 +11,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class RegionBodyDto {
-  @IsString()
-  @MinLength(2)
-  name!: string;
-}
+import { RegionBodyDto } from './dto/admin-regions.dto';
 
 @ApiTags('Admin · Regions')
 @ApiBearerAuth('access-token')

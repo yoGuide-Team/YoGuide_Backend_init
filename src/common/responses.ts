@@ -75,7 +75,7 @@ export class AuthSessionResponse {
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbW95...',
     description: 'JWT bearer token. Default lifetime is 30 days.',
   })
-  token!: string;
+  access_token!: string;
 
   @ApiProperty({ type: AuthUserResponse })
   user!: AuthUserResponse;

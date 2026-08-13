@@ -3,6 +3,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
+import { UserProfileResponse, RegisterPendingResponse } from './auth/dto';
 import {
   ApiErrorResponse,
   AuthSessionResponse,
@@ -42,7 +43,26 @@ async function bootstrap() {
   // ── Swagger / OpenAPI ──────────────────────────────────────
   const swaggerConfig = new DocumentBuilder()
     .setTitle('yoGuide Platform API')
-    .setDescription('yoGuide Platform API')
+    .setDescription(
+      [
+        'Interactive API reference for the yoGuide backend.',
+        '',
+        '**Authentication:** Most endpoints require a JWT bearer token. Obtain one via `POST /auth/login` or `POST /auth/register`, then click **Authorize** and paste the token.',
+        '',
+        '**Admin endpoints** (`/admin/*`) require a user with role `ADMIN`.',
+        '',
+        '**Enums** (shown as dropdowns in request bodies where applicable):',
+        '- `UserRole`: ADMIN, TOURIST, GUIDE',
+        '- `VisitorType`: VISITOR, INVESTOR, LAYOVER, EXPERT',
+        '- `GuideType`: INDIVIDUAL, COMPANY',
+        '- `Language`: EN, FR, RW, SW',
+        '- `MediaType`: IMAGE, VIDEO, PDF',
+        '- `PaymentStatus`: PENDING, SUCCESSFUL, FAILED',
+        '- `PaymentMethod`: CARD, MOMO',
+        '- `WalletAdjustmentKind`: adjustment, topup, refund, debit',
+        '- Top-up `method`: card, momo, cash',
+      ].join('\n'),
+    )
     .setVersion('0.6.0')
     .addServer('http://localhost:3030', 'Local development')
     .addBearerAuth(
@@ -59,6 +79,8 @@ async function bootstrap() {
       ApiErrorResponse,
       AuthSessionResponse,
       AuthUserResponse,
+      UserProfileResponse,
+      RegisterPendingResponse,
       HealthResponse,
       OkResponse,
       WalletResponse,

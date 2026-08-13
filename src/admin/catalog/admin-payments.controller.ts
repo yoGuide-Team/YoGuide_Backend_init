@@ -11,50 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator';
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class PaymentBodyDto {
-  @IsString()
-  bookingId!: string;
-
-  @IsNumber()
-  @Min(0)
-  amount!: number;
-
-  @IsEnum(PaymentStatus)
-  status!: PaymentStatus;
-
-  @IsEnum(PaymentMethod)
-  paymentMethod!: PaymentMethod;
-
-  @IsOptional()
-  @IsString()
-  transactionRef?: string;
-}
-
-class UpdatePaymentDto {
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  amount?: number;
-
-  @IsOptional()
-  @IsEnum(PaymentStatus)
-  status?: PaymentStatus;
-
-  @IsOptional()
-  @IsEnum(PaymentMethod)
-  paymentMethod?: PaymentMethod;
-
-  @IsOptional()
-  @IsString()
-  transactionRef?: string;
-}
+import { PaymentBodyDto, UpdatePaymentDto } from './dto/admin-payments.dto';
 
 @ApiTags('Admin · Payments')
 @ApiBearerAuth('access-token')
@@ -65,6 +27,8 @@ export class AdminPaymentsController {
 
   @Get()
   @ApiOperation({ summary: 'List payments' })
+  @ApiQuery({ name: 'status', required: false, enum: PaymentStatus, enumName: 'PaymentStatus' })
+  @ApiQuery({ name: 'bookingId', required: false, description: 'Filter by booking id (UUID)' })
   list(@Query('status') status?: PaymentStatus, @Query('bookingId') bookingId?: string) {
     return this.prisma.payment.findMany({
       where: {

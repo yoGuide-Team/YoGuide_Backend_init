@@ -1,0 +1,8 @@
+# Local Mac/Colima override — host network_mode does not expose Postgres to
+# the Mac host when another Postgres is already on :5432. Use this file for
+# local `npm run start:dev` + `prisma migrate`. Not used on Linux production.
+services:
+  postgres:
+    network_mode: bridge
+    ports:
+      - "5433:5432"

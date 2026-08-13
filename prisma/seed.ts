@@ -17,6 +17,7 @@ async function main() {
       nationality: 'Rwanda',
       role: UserRole.ADMIN,
       defaultLanguage: Language.EN,
+      emailVerified: true,
     },
     create: {
       email: adminEmail,
@@ -25,6 +26,7 @@ async function main() {
       nationality: 'Rwanda',
       role: UserRole.ADMIN,
       defaultLanguage: Language.EN,
+      emailVerified: true,
     },
   });
 

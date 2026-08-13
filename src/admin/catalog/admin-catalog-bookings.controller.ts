@@ -11,52 +11,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsDateString, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
-
-class BookingBodyDto {
-  @IsString()
-  userId!: string;
-
-  @IsString()
-  packageId!: string;
-
-  @IsString()
-  vehicleId!: string;
-
-  @IsString()
-  guideId!: string;
-
-  @IsDateString()
-  scheduleDate!: string;
-
-  @IsString()
-  @MinLength(2)
-  pickupLocation!: string;
-
-  @IsNumber()
-  @Min(0)
-  totalDue!: number;
-}
-
-class UpdateBookingDto {
-  @IsOptional()
-  @IsDateString()
-  scheduleDate?: string;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  pickupLocation?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalDue?: number;
-}
+import { BookingBodyDto, UpdateBookingDto } from './dto/admin-catalog-bookings.dto';
 
 @ApiTags('Admin · Bookings')
 @ApiBearerAuth('access-token')
@@ -67,6 +26,8 @@ export class AdminCatalogBookingsController {
 
   @Get()
   @ApiOperation({ summary: 'List bookings' })
+  @ApiQuery({ name: 'userId', required: false, description: 'Filter by user id (UUID)' })
+  @ApiQuery({ name: 'guideId', required: false, description: 'Filter by guide profile id (UUID)' })
   list(@Query('userId') userId?: string, @Query('guideId') guideId?: string) {
     return this.prisma.booking.findMany({
       where: {
