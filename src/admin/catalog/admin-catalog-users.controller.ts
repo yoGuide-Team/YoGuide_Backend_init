@@ -22,7 +22,7 @@ import {
   MinLength,
 } from 'class-validator';
 import * as bcrypt from 'bcryptjs';
-import { UserRole, VisitorType } from '@prisma/client';
+import { Language, UserRole, VisitorType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
@@ -66,8 +66,8 @@ class CreateUserDto {
   departureDate?: string;
 
   @IsOptional()
-  @IsString()
-  defaultLanguage?: string;
+  @IsEnum(Language)
+  defaultLanguage?: Language;
 
   @IsOptional()
   @IsString()
@@ -126,8 +126,8 @@ class UpdateUserDto {
   departureDate?: string;
 
   @IsOptional()
-  @IsString()
-  defaultLanguage?: string;
+  @IsEnum(Language)
+  defaultLanguage?: Language;
 
   @IsOptional()
   @IsString()
@@ -164,6 +164,7 @@ export class AdminCatalogUsersController {
         role: true,
         visitorType: true,
         profileImage: true,
+        defaultLanguage: true,
         currentRegionId: true,
         createdAt: true,
         updatedAt: true,

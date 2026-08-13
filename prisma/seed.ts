@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole } from '@prisma/client';
+import { Language, PrismaClient, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -16,6 +16,7 @@ async function main() {
       password,
       nationality: 'Rwanda',
       role: UserRole.ADMIN,
+      defaultLanguage: Language.EN,
     },
     create: {
       email: adminEmail,
@@ -23,6 +24,7 @@ async function main() {
       fullName: 'YoGuide Admin',
       nationality: 'Rwanda',
       role: UserRole.ADMIN,
+      defaultLanguage: Language.EN,
     },
   });
 

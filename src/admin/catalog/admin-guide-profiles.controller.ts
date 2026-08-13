@@ -19,7 +19,7 @@ import {
   IsString,
   Min,
 } from 'class-validator';
-import { GuideType } from '@prisma/client';
+import { GuideType, Language } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
@@ -36,8 +36,8 @@ class GuideProfileBodyDto {
   companyName?: string;
 
   @IsArray()
-  @IsString({ each: true })
-  languages!: string[];
+  @IsEnum(Language, { each: true })
+  languages!: Language[];
 
   @IsOptional()
   @IsInt()
@@ -56,8 +56,8 @@ class UpdateGuideProfileDto {
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  languages?: string[];
+  @IsEnum(Language, { each: true })
+  languages?: Language[];
 
   @IsOptional()
   @IsInt()

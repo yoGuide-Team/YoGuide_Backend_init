@@ -44,6 +44,13 @@ enum PaymentMethod {
   MOMO
 }
 
+enum Language {
+  EN
+  FR
+  RW
+  SW
+}
+
 model User {
   id                 String        @id @default(uuid())
   fullName           String
@@ -56,7 +63,7 @@ model User {
   profileImage       String?
   arrivalDate        DateTime?
   departureDate      DateTime?
-  defaultLanguage    String?
+  defaultLanguage    Language?
   inAppNotifications Boolean       @default(true)
   emailNotifications Boolean       @default(true)
   currentRegionId    String?
@@ -78,7 +85,7 @@ model GuideProfile {
   user          User           @relation(fields: [userId], references: [id])
   guideType     GuideType
   companyName   String?
-  languages     String[]
+  languages     Language[]
   numberOfTours Int            @default(0)
   reviews       Review[]
   vehicles      GuideVehicle[]
