@@ -11,18 +11,21 @@ ALTER TABLE "User" ALTER COLUMN "defaultLanguage" TYPE "Language" USING (
 );
 
 -- AlterTable
-ALTER TABLE "GuideProfile" ALTER COLUMN "languages" TYPE "Language"[] USING (
-  COALESCE(
-    ARRAY(
-      SELECT CASE UPPER(lang)
-        WHEN 'EN' THEN 'EN'::"Language"
-        WHEN 'FR' THEN 'FR'::"Language"
-        WHEN 'RW' THEN 'RW'::"Language"
-        WHEN 'SW' THEN 'SW'::"Language"
-        ELSE 'EN'::"Language"
-      END
-      FROM unnest("languages") AS lang
-    ),
-    ARRAY[]::"Language"[]
-  )
+-- Postgres forbids subqueries in ALTER COLUMN ... USING, so convert the
+-- text[] column via a temporary column + UPDATE instead.
+ALTER TABLE "GuideProfile" ADD COLUMN "languages_tmp" "Language"[] NOT NULL DEFAULT ARRAY[]::"Language"[];
+
+UPDATE "GuideProfile" SET "languages_tmp" = COALESCE(
+  ARRAY(
+    SELECT CASE
+      WHEN UPPER(lang) IN ('EN', 'FR', 'RW', 'SW') THEN UPPER(lang)::"Language"
+      ELSE 'EN'::"Language"
+    END
+    FROM unnest("languages") AS lang
+  ),
+  ARRAY[]::"Language"[]
 );
+
+ALTER TABLE "GuideProfile" DROP COLUMN "languages";
+ALTER TABLE "GuideProfile" RENAME COLUMN "languages_tmp" TO "languages";
+ALTER TABLE "GuideProfile" ALTER COLUMN "languages" DROP DEFAULT;
