@@ -61,6 +61,25 @@ async function main() {
     },
   });
 
+  await prisma.packageTour.upsert({
+    where: { id: 'seed-package-tour-gorilla' },
+    update: {
+      packageId: 'seed-package-highlights',
+      title: 'Gorilla Trek Briefing',
+      description: 'Pre-trek orientation and village walk.',
+      duration: 2,
+      price: 45,
+    },
+    create: {
+      id: 'seed-package-tour-gorilla',
+      packageId: 'seed-package-highlights',
+      title: 'Gorilla Trek Briefing',
+      description: 'Pre-trek orientation and village walk.',
+      duration: 2,
+      price: 45,
+    },
+  });
+
   await prisma.vehicle.upsert({
     where: { id: 'seed-vehicle-sedan' },
     update: {

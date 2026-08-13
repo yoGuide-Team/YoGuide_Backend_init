@@ -21,7 +21,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { MediaType, Prisma } from '@prisma/client';
+import { MediaType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
@@ -45,9 +45,6 @@ class PackageBodyDto {
   @IsNumber()
   @Min(0)
   price!: number;
-
-  @IsOptional()
-  tours?: Prisma.InputJsonValue;
 }
 
 class UpdatePackageDto {
@@ -70,9 +67,24 @@ class UpdatePackageDto {
   @IsNumber()
   @Min(0)
   price?: number;
+}
 
-  @IsOptional()
-  tours?: Prisma.InputJsonValue;
+class PackageTourBodyDto {
+  @IsString()
+  @MinLength(1)
+  title!: string;
+
+  @IsString()
+  @MinLength(1)
+  description!: string;
+
+  @IsInt()
+  @Min(1)
+  duration!: number;
+
+  @IsNumber()
+  @Min(0)
+  price!: number;
 }
 
 class PackageMediaBodyDto {
@@ -101,6 +113,7 @@ export class AdminPackagesController {
           select: { id: true, name: true, region: { select: { id: true, name: true } } },
         },
         media: true,
+        tours: true,
         _count: { select: { bookings: true, reviews: true } },
       },
     });
@@ -111,7 +124,7 @@ export class AdminPackagesController {
   async get(@Param('id') id: string) {
     const pkg = await this.prisma.package.findUnique({
       where: { id },
-      include: { tourType: { include: { region: true } }, media: true },
+      include: { tourType: { include: { region: true } }, media: true, tours: true },
     });
     if (!pkg) throw new NotFoundException(`Package '${id}' not found.`);
     return pkg;
@@ -128,7 +141,6 @@ export class AdminPackagesController {
         description: dto.description,
         durationHours: dto.durationHours,
         price: dto.price,
-        tours: dto.tours,
       },
     });
   }
@@ -149,6 +161,7 @@ export class AdminPackagesController {
       throw new BadRequestException('Cannot delete a package with existing bookings.');
     }
     await this.prisma.packageMedia.deleteMany({ where: { packageId: id } });
+    await this.prisma.packageTour.deleteMany({ where: { packageId: id } });
     await this.prisma.package.delete({ where: { id } });
     return { ok: true };
   }
@@ -192,6 +205,67 @@ export class AdminPackagesController {
     await this.ensureMedia(packageId, mediaId);
     await this.prisma.packageMedia.delete({ where: { id: mediaId } });
     return { ok: true };
+  }
+
+  @Get(':packageId/tours')
+  @ApiOperation({ summary: 'List tours on a package' })
+  async listTours(@Param('packageId') packageId: string) {
+    await this.ensureExists(packageId);
+    return this.prisma.packageTour.findMany({
+      where: { packageId },
+      orderBy: { id: 'asc' },
+    });
+  }
+
+  @Post(':packageId/tours')
+  @ApiOperation({ summary: 'Add tour to package' })
+  async addTour(@Param('packageId') packageId: string, @Body() dto: PackageTourBodyDto) {
+    await this.ensureExists(packageId);
+    return this.prisma.packageTour.create({
+      data: {
+        packageId,
+        title: dto.title,
+        description: dto.description,
+        duration: dto.duration,
+        price: dto.price,
+      },
+    });
+  }
+
+  @Patch(':packageId/tours/:tourId')
+  @ApiOperation({ summary: 'Update package tour' })
+  async updateTour(
+    @Param('packageId') packageId: string,
+    @Param('tourId') tourId: string,
+    @Body() dto: PackageTourBodyDto,
+  ) {
+    await this.ensureTour(packageId, tourId);
+    return this.prisma.packageTour.update({
+      where: { id: tourId },
+      data: {
+        title: dto.title,
+        description: dto.description,
+        duration: dto.duration,
+        price: dto.price,
+      },
+    });
+  }
+
+  @Delete(':packageId/tours/:tourId')
+  @ApiOperation({ summary: 'Delete package tour' })
+  async removeTour(@Param('packageId') packageId: string, @Param('tourId') tourId: string) {
+    await this.ensureTour(packageId, tourId);
+    await this.prisma.packageTour.delete({ where: { id: tourId } });
+    return { ok: true };
+  }
+
+  private async ensureTour(packageId: string, tourId: string) {
+    await this.ensureExists(packageId);
+    const tour = await this.prisma.packageTour.findFirst({
+      where: { id: tourId, packageId },
+    });
+    if (!tour) throw new NotFoundException(`Tour '${tourId}' not found on this package.`);
+    return tour;
   }
 
   private async ensureTourType(tourTypeId: string) {

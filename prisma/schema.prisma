@@ -110,13 +110,25 @@ model Package {
   description   String
   durationHours Int
   price         Decimal        @db.Decimal(12, 2)
-  tours         Json?
+  tours         PackageTour[]
   media         PackageMedia[]
   reviews       Review[]
   bookings      Booking[]
   createdAt     DateTime       @default(now())
 
   @@index([tourTypeId])
+}
+
+model PackageTour {
+  id          String  @id @default(uuid())
+  packageId   String
+  package     Package @relation(fields: [packageId], references: [id])
+  title       String
+  description String
+  duration    Int
+  price       Decimal @db.Decimal(12, 2)
+
+  @@index([packageId])
 }
 
 model PackageMedia {
