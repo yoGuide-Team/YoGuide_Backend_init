@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
+    "test:api": "node test/api-e2e.mjs",
     "prisma:studio": "prisma studio"
   },
   "prisma": {
