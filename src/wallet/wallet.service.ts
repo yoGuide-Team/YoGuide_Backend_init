@@ -1,13 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class WalletService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getOrCreateForUser(userId: string) {
     const wallet = await this.prisma.wallet.upsert({
@@ -55,14 +51,6 @@ async topUp(userId: string, amountCents: number, method: string) {
       where: { id: wallet.id },
       data: { balanceCents: { increment: amountCents } },
     });
-
-
-    // ADD THIS HERE
-await this.notifications.notifyWalletDeposit(
-  userId,
-  amountCents,
-  wallet.currency,
-);
 
     const transactions = await tx.walletTransaction.findMany({
       where: { walletId: wallet.id },

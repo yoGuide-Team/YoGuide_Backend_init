@@ -1,162 +1,44 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsEmail, IsOptional, IsString,IsNotEmpty, MinLength } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { UserRole } from '@prisma/client';
+
 export class RegisterDto {
-  @ApiProperty({ example: "jane@example.com" })
+  @ApiProperty({ example: 'jane@example.com' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "hunter2hunter2", minLength: 8 })
+  @ApiProperty({ example: 'hunter2hunter2', minLength: 8 })
   @IsString()
   @MinLength(8)
   password!: string;
 
-  @ApiProperty({ example: "Jane Tourist", required: false })
-  @IsOptional()
+  @ApiProperty({ example: 'Jane Tourist' })
   @IsString()
-  fullName?: string;
+  @MinLength(2)
+  fullName!: string;
 
-  @ApiProperty({ example: "+250788000000", required: false })
+  @ApiProperty({ example: 'Rwanda' })
+  @IsString()
+  @MinLength(2)
+  nationality!: string;
+
+  @ApiPropertyOptional({ example: '+250788000000' })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiProperty({
-    example: "Visitor",
-    required: false,
-    description:
-      "Flutter userType: 'Visitor' | 'Resident' | 'Hospitality Card Holder'",
-  })
+  @ApiPropertyOptional({ enum: UserRole, default: UserRole.TOURIST })
   @IsOptional()
-  @IsString()
-  userType?: string;
-
-  @ApiProperty({ example: "CARD-001", required: false })
-  @IsOptional()
-  @IsString()
-  cardNumber?: string;
+  @IsEnum(UserRole)
+  role?: UserRole;
 }
 
 export class LoginDto {
-  @ApiProperty({ example: "admin@yoguide.app" })
+  @ApiProperty({ example: 'admin@yoguide.app' })
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: "Y0guide#Admin2026" })
+  @ApiProperty({ example: 'Y0guide#Admin2026' })
   @IsString()
   password!: string;
 }
-
-export class GoogleLoginDto {
-  @ApiProperty({
-    description:
-      "Google ID token from the Flutter `google_sign_in` package — " +
-      "either `idToken`, `token`, or `credential` is accepted.",
-    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  idToken?: string;
-
-  @ApiProperty({
-    description:
-      "Alternate field name for the Google ID token. Accepted for compatibility with frontend payloads.",
-    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  token?: string;
-
-  @ApiProperty({
-    description:
-      "Fallback field name used by some Google libraries. Accepted for compatibility with frontend payloads.",
-    example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
-    required: false,
-  })
-  @IsOptional()
-  @IsString()
-  credential?: string;
-}
-export class ForgotPasswordDto {
-  @ApiProperty({
-    example: "jane@example.com",
-    description: "Email address associated with the account.",
-  })
-  @IsEmail()
-  email!: string;
-}
-
-export class ResetPasswordDto {
-  @ApiProperty({
-    description: "Password reset token received via email.",
-    example: "a1b2c3d4e5f6...",
-  })
-  @IsString()
-  token!: string;
-
-  @ApiProperty({
-    example: "NewSecurePassword123!",
-    minLength: 8,
-  })
-  @IsString()
-  @MinLength(8)
-  password!: string;
-}
-
-export class VerifyRegisterOtpDto {
-  @ApiProperty({ example: "user@example.com" })
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @ApiProperty({ example: "123456" })
-  @IsString()
-  @IsNotEmpty()
-  code: string;
-}
-export class ResendOtpDto {
-  @ApiProperty({ example: "user@example.com" })
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-}
-// import { ApiProperty } from '@nestjs/swagger';
-// import { IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
-
-// export class RegisterDto {
-//   @ApiProperty({
-//     example: 'jane@example.com',
-//     description: 'Account email — case-insensitive, used as the unique key.',
-//   })
-//   @IsEmail()
-//   email!: string;
-
-//   @ApiProperty({
-//     example: 'hunter2hunter2',
-//     description: 'Plaintext password. Hashed with bcrypt server-side. Minimum 8 characters.',
-//     minLength: 8,
-//   })
-//   @IsString()
-//   @MinLength(8)
-//   password!: string;
-
-//   @ApiProperty({
-//     example: 'Jane Tourist',
-//     required: false,
-//     description: 'Display name. Optional; defaults to null.',
-//   })
-//   @IsOptional()
-//   @IsString()
-//   fullName?: string;
-// }
-
-// export class LoginDto {
-//   @ApiProperty({ example: 'admin@yoguide.app' })
-//   @IsEmail()
-//   email!: string;
-
-//   @ApiProperty({ example: 'Y0guide#Admin2026' })
-//   @IsString()
-//   password!: string;
-// }

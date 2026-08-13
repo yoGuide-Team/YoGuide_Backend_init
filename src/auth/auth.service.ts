@@ -1,26 +1,20 @@
 import {
   ConflictException,
-  HttpException,
-  HttpStatus,
   Injectable,
-  Logger,
   NotFoundException,
   UnauthorizedException,
-  BadRequestException,
-} from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
-import * as bcrypt from "bcryptjs";
-import { OAuth2Client } from "google-auth-library";
-import { PrismaService } from "../prisma/prisma.service";
-import type { AuthenticatedUser } from "./authenticated-user";
-import { MailService } from "../mail/mail.service";
-import { randomBytes, createHash } from "node:crypto";
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+import { UserRole } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { AuthenticatedUser } from './authenticated-user';
 
 interface JwtPayload {
   sub: string;
   email: string;
-  roleKey: string;
+  role: UserRole;
 }
 
 export interface AuthSession {
@@ -28,497 +22,82 @@ export interface AuthSession {
   user: AuthenticatedUser;
 }
 
-export interface RegisterResult {
-  requiresVerification: boolean;
-  email: string;
-  message: string;
-}
-
 @Injectable()
 export class AuthService {
-  private readonly googleClient: OAuth2Client;
-
-  private readonly googleClientId: string;
-
-  private readonly logger = new Logger(AuthService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-    private readonly mailService: MailService,
-  ) {
-    this.googleClientId =
-      (process.env.GOOGLE_CLIENT_ID?.trim() || this.config.get<string>("GOOGLE_CLIENT_ID")?.trim()) ?? "";
-    this.googleClient = new OAuth2Client(this.googleClientId || undefined);
-  }
-
-  // ── Email + password register ─────────────────────────────────────────────
+  ) {}
 
   async register(input: {
     email: string;
     password: string;
-    fullName?: string;
+    fullName: string;
+    nationality: string;
     phone?: string;
-    userType?: string;
-    cardNumber?: string;
-    roleKey?: string;
-  }): Promise<RegisterResult> {
+    role?: UserRole;
+  }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
-    const roleKey = this.resolveRoleKey(input.userType ?? input.roleKey);
-
-    const adminAlreadyExists = await this.prisma.user.findFirst({
-      where: { roleKey: "admin" },
-    });
-    const effectiveRole =
-      roleKey === "admin" && !adminAlreadyExists ? "admin" : "user";
-
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
-      throw new ConflictException(
-        "An account with this email already exists. Please log in.",
-      );
+      throw new ConflictException('An account with this email already exists.');
     }
 
-    const role = await this.prisma.role.findUnique({
-      where: { key: effectiveRole },
+    const adminExists = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN },
     });
-    if (!role) {
-      throw new NotFoundException(`Role '${effectiveRole}' is not configured.`);
-    }
+    const role =
+      input.role === UserRole.ADMIN && !adminExists
+        ? UserRole.ADMIN
+        : input.role ?? UserRole.TOURIST;
 
-    const passwordHash = await bcrypt.hash(input.password, 10);
-
-    // Generate 6-digit verification code
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const codeHash = createHash("sha256").update(code).digest("hex");
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
+    const password = await bcrypt.hash(input.password, 10);
     const user = await this.prisma.user.create({
       data: {
         email,
-        passwordHash,
-        fullName: input.fullName?.trim() ?? null,
-        phone: input.phone?.trim() ?? null,
-        cardNumber: input.cardNumber?.trim() ?? null,
-        roleKey: effectiveRole,
-        emailVerified: false,
-        otpCodeHash: codeHash,
-        otpExpiresAt: expiresAt,
+        password,
+        fullName: input.fullName.trim(),
+        nationality: input.nationality.trim(),
+        phone: input.phone?.trim(),
+        role,
       },
     });
 
-    console.log("\n=======================================================");
-    console.log("🔑 REGISTRATION OTP CODE:", code, "for", user.email);
-    console.log("=======================================================\n");
-
-    await this.mailService.sendOtpEmail(user.email, code);
-
-    return {
-      requiresVerification: true,
-      email: user.email,
-      message:
-        "Registration successful. Please enter the verification code sent to your email.",
-    };
+    return this.buildSession(user.id);
   }
 
-  // ── Email + password login ────────────────────────────────────────────────
-
-  async login(input: {
-    email: string;
-    password: string;
-  }): Promise<AuthSession> {
+  async login(input: { email: string; password: string }): Promise<AuthSession> {
     const email = input.email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      throw new NotFoundException(
-        "No account found with this email. Please sign up first.",
-      );
-    }
-    if (!user.passwordHash) {
-      throw new UnauthorizedException("Invalid email or password.");
+      throw new NotFoundException('No account found with this email.');
     }
 
-    const ok = await bcrypt.compare(input.password, user.passwordHash);
+    const ok = await bcrypt.compare(input.password, user.password);
     if (!ok) {
-      throw new UnauthorizedException("Invalid email or password.");
-    }
-
-    // 🔑 Block unverified email accounts from obtaining a JWT session
-    if (!user.emailVerified) {
-      // Re-issue a fresh OTP code automatically
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      const codeHash = createHash("sha256").update(code).digest("hex");
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
-      });
-
-      console.log("\n=======================================================");
-      console.log("🔑 UNVERIFIED LOGIN OTP CODE:", code, "for", user.email);
-      console.log("=======================================================\n");
-
-      await this.mailService.sendOtpEmail(user.email, code);
-
-      throw new UnauthorizedException(
-        "EMAIL_NOT_VERIFIED: Your email is not verified. A new verification code has been sent to your email.",
-      );
+      throw new UnauthorizedException('Invalid email or password.');
     }
 
     return this.buildSession(user.id);
   }
-
-  // ── Google Sign-In ────────────────────────────────────────────────────────
-
-  async loginWithGoogle(token: string): Promise<AuthSession> {
-    const clientId = this.googleClientId;
-    if (!clientId) {
-      throw new UnauthorizedException(
-        "Google Sign-In is not configured on this server.",
-      );
-    }
-
-    const idToken = token?.trim();
-    if (!idToken) {
-      throw new HttpException(
-        {
-          message: 'Google authentication failed',
-          error: 'Google token is required.',
-        },
-        HttpStatus.UNAUTHORIZED,
-      );
-    }
-
-    let googleId: string;
-    let email: string;
-    let name: string | undefined;
-    let picture: string | undefined;
-
-    const audience = process.env.GOOGLE_CLIENT_ID?.trim() || clientId;
-
-    // Debug: surface expected audience and a short token preview so front/backend mismatch
-    console.log('Google Sign-In: Expected Audience:', audience);
-    console.log('Google Sign-In: token preview:', idToken?.slice(0, 12) + '...');
-
-    // Try verifying as an ID token (JWT) first — used on Android/iOS.
-    // If that fails, treat it as an access token (used on web) and verify
-    // via Google's tokeninfo endpoint.
-    const looksLikeJwt = token.split('.')?.length === 3;
-
-    if (looksLikeJwt) {
-      let ticket;
-      try {
-        ticket = await this.googleClient.verifyIdToken({
-          idToken: idToken,
-          audience,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Invalid Google ID token.';
-        // Log full error for diagnostics (requested)
-        console.error('Google Token Verification Error:', error);
-        this.logger.error(
-          `Google authentication failed: ${message}`,
-          error instanceof Error ? error.stack : undefined,
-          AuthService.name,
-        );
-        throw new HttpException(
-          {
-            message: 'Google authentication failed',
-            error: message,
-          },
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      const payload = ticket?.getPayload();
-      if (!payload?.email || !payload.sub) {
-        this.logger.error(
-          'Google authentication failed: token payload missing required fields',
-          undefined,
-          AuthService.name,
-        );
-        throw new HttpException(
-          {
-            message: 'Google authentication failed',
-            error: 'Google token is missing required fields.',
-          },
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      googleId = payload.sub;
-      email = payload.email;
-      name = payload.name ?? payload.given_name;
-      picture = payload.picture;
-    } else {
-      // Access token path — used by google_sign_in on web.
-      // Verify via Google's userinfo endpoint.
-      console.log('Google Sign-In: Verifying access token via userinfo endpoint (non-JWT).');
-      const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) {
-        // Log response body if available for diagnostics
-        let bodyText = '';
-        try {
-          bodyText = await res.text();
-        } catch {}
-        console.error('Google access token verification failed:', res.status, bodyText);
-        this.logger.error(
-          `Google authentication failed: access token verification returned ${res.status}`,
-          undefined,
-          AuthService.name,
-        );
-        throw new HttpException(
-          {
-            message: 'Google authentication failed',
-            error: 'Invalid Google access token.',
-          },
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      const info = (await res.json()) as {
-        sub: string;
-        email: string;
-        name?: string;
-        picture?: string;
-        email_verified?: boolean;
-      };
-      if (!info.email || !info.sub) {
-        this.logger.error(
-          'Google authentication failed: userinfo payload missing required fields',
-          undefined,
-          AuthService.name,
-        );
-        throw new HttpException(
-          {
-            message: 'Google authentication failed',
-            error: 'Google token is missing required fields.',
-          },
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      googleId = info.sub;
-      email = info.email;
-      name = info.name;
-      picture = info.picture;
-    }
-
-    // Find or create the user by verified Google email.
-    let user = await this.prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
-
-    if (user) {
-      if (!user.googleId || !user.emailVerified) {
-        user = await this.prisma.user.update({
-          where: { id: user.id },
-          data: {
-            googleId,
-            avatarUrl: user.avatarUrl ?? picture ?? null,
-            emailVerified: true, // Google already verified this email
-          },
-        });
-      }
-    } else {
-      const role = await this.prisma.role.findUnique({
-        where: { key: "user" },
-      });
-      if (!role) {
-        throw new NotFoundException("Default role 'user' is not configured.");
-      }
-      const safeName = name
-        ? name.trim()
-        : email.split("@")[0].replace(/^[a-z]/, (c) => c.toUpperCase());
-      user = await this.prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          passwordHash: "",
-          fullName: safeName || null,
-          avatarUrl: picture ?? null,
-          googleId,
-          roleKey: "user",
-          emailVerified: true, // Automatically trusted from Google OAuth
-        },
-      });
-    }
-
-    return this.buildSession(user.id);
-  }
-
-  // ── Public OTP Verification & Resend ──────────────────────────────────────
-
-async verifyRegisterOtp(email: string, code: string): Promise<AuthSession> {
-  if (!email || typeof email !== "string") {
-    throw new BadRequestException("Email is required.");
-  }
-  if (!code || typeof code !== "string") {
-    throw new BadRequestException("OTP code is required.");
-  }
-
-  const targetEmail = email.trim().toLowerCase();
-  const codeHash = createHash("sha256").update(code.trim()).digest("hex");
-
-  const user = await this.prisma.user.findFirst({
-    where: {
-      email: targetEmail,
-      otpCodeHash: codeHash,
-      otpExpiresAt: { gt: new Date() },
-    },
-  });
-
-  if (!user) {
-    throw new UnauthorizedException("Invalid or expired verification code.");
-  }
-
-  await this.prisma.user.update({
-    where: { id: user.id },
-    data: { emailVerified: true, otpCodeHash: null, otpExpiresAt: null },
-  });
-
-  return this.buildSession(user.id);
-}
-
- async sendOtpByEmail(email: string) {
-  if (!email || typeof email !== "string") {
-    throw new BadRequestException("Email is required.");
-  }
-
-  const targetEmail = email.trim().toLowerCase();
-  const user = await this.prisma.user.findUnique({
-    where: { email: targetEmail },
-  });
-
-  if (!user) {
-    return {
-      message: "If an account exists for that email, a code has been sent.",
-    };
-  }
-
-  // 🔑 Check if email is already verified
-  if (user.emailVerified) {
-    return {
-      message: "This email is already verified. You can log in directly.",
-    };
-  }
-
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const codeHash = createHash("sha256").update(code).digest("hex");
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-  await this.prisma.user.update({
-    where: { id: user.id },
-    data: { otpCodeHash: codeHash, otpExpiresAt: expiresAt },
-  });
-
-  console.log("\n=======================================================");
-  console.log("🔑 RESENT OTP CODE:", code, "for", user.email);
-  console.log("=======================================================\n");
-
-  await this.mailService.sendOtpEmail(user.email, code);
-
-  return { message: "Verification code sent." };
-}
-  // ── Password Reset ────────────────────────────────────────────────────────
-
-  async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
-
-    if (!user) {
-      return {
-        message:
-          "If an account exists for that email, a reset link has been sent.",
-      };
-    }
-
-    const token = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordResetToken: tokenHash,
-        passwordResetExpiresAt: expiresAt,
-      },
-    });
-
-    const frontendUrl =
-      this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
-
-    const resetUrl = frontendUrl.endsWith("/reset-password")
-      ? `${frontendUrl}?token=${token}`
-      : `${frontendUrl}/reset-password?token=${token}`;
-
-    console.log("\n=======================================================");
-    console.log("🔑 RAW TOKEN:", token);
-    console.log("🔗 RESET URL:", resetUrl);
-    console.log("=======================================================\n");
-
-    await this.mailService.sendPasswordResetEmail(
-      user.email,
-      user.fullName ?? "User",
-      resetUrl,
-    );
-
-    return {
-      message:
-        "If an account exists for that email, a reset link has been sent.",
-    };
-  }
-
-  async resetPassword(token: string, password: string) {
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-
-    const user = await this.prisma.user.findFirst({
-      where: {
-        passwordResetToken: tokenHash,
-        passwordResetExpiresAt: { gt: new Date() },
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException("Invalid or expired reset token.");
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash,
-        passwordResetToken: null,
-        passwordResetExpiresAt: null,
-      },
-    });
-
-    return { message: "Password reset successful." };
-  }
-
-  // ── Token verification & Helpers ──────────────────────────────────────────
 
   async verifyToken(token: string): Promise<AuthenticatedUser> {
     let payload: JwtPayload;
     try {
       payload = await this.jwt.verifyAsync<JwtPayload>(token);
     } catch {
-      throw new UnauthorizedException("Invalid or expired token.");
+      throw new UnauthorizedException('Invalid or expired token.');
     }
     return this.loadAuthenticatedUser(payload.sub);
   }
 
-  private resolveRoleKey(value?: string): string {
-    if (!value) return "user";
-    const map: Record<string, string> = {
-      Visitor: "user",
-      Resident: "user",
-      "Hospitality Card Holder": "user",
-      admin: "admin",
-      user: "user",
-    };
-    return map[value] ?? "user";
+  private permissionsForRole(role: UserRole): string[] {
+    if (role === UserRole.ADMIN) return ['*'];
+    if (role === UserRole.GUIDE) {
+      return ['guides.read', 'guides.write', 'bookings.read'];
+    }
+    return [];
   }
 
   private async buildSession(userId: string): Promise<AuthSession> {
@@ -526,31 +105,26 @@ async verifyRegisterOtp(email: string, code: string): Promise<AuthSession> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      roleKey: user.roleKey,
+      role: user.roleKey as UserRole,
     };
     const access_token = await this.jwt.signAsync(payload);
     return { access_token, user };
   }
 
-  private async loadAuthenticatedUser(
-    userId: string,
-  ): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { role: true },
-    });
+  private async loadAuthenticatedUser(userId: string): Promise<AuthenticatedUser> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      throw new UnauthorizedException("User no longer exists.");
+      throw new UnauthorizedException('User no longer exists.');
     }
     return {
       id: user.id,
       email: user.email,
-      fullName: user.fullName ?? null,
-      roleKey: user.roleKey,
-      roleLabel: user.role.label,
-      permissions: user.role.permissions,
-      emailVerified: user.emailVerified,
-      identityStatus: user.identityStatus,
+      fullName: user.fullName,
+      roleKey: user.role,
+      roleLabel: user.role,
+      permissions: this.permissionsForRole(user.role),
+      emailVerified: true,
+      identityStatus: 'approved',
     };
   }
 }

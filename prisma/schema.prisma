@@ -8,64 +8,200 @@ datasource db {
   directUrl    = env("DIRECT_URL")
   relationMode = "prisma"
 }
-enum ProfileType {
-  TOURIST
-  TOUR_GUIDE
-  CHEF
-  HOTEL_OWNER
-  COMPANY_OWNER
-  VENDOR
-  CORPORATE_EMPLOYEE
+
+enum UserRole {
   ADMIN
-}
-/// Local user account. Email + bcrypt password hash + role pointer.
-model User {
-  id                      String              @id @default(cuid())
-  email                   String              @unique
-  passwordHash            String              @default("")
-  fullName                String?
-  /// Google OAuth subject id — set when the account was created via Google Sign-In.
-  /// Null for email+password accounts. Unique so a Google account can only map to
-  /// one user row.
-  googleId                String?             @unique
-  avatarUrl               String?
-  /// FK by name to `Role.key`. Stays a plain string so JWT payloads stay
-  /// readable without a join.
-  roleKey                 String              @default("user")
-  profileType             ProfileType             @default(TOURIST)
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
-  cardNumber              String?
-  phone                   String?
-  role                    Role                @relation(fields: [roleKey], references: [key])
-  esimOrders              EsimOrder[]
-  shuttleBookings         ShuttleBooking[]
-  walletTransactions      WalletTransaction[]
-  tripProfile             TripProfile?
-  eventInterest           EventInterest?
-  notifications           Notification[]
-  wallet                  Wallet?
-  bookings                Booking[]
-  passwordResetToken      String?
-  passwordResetExpiresAt  DateTime?
-  /// Gates specific actions (booking, wallet top-up), not registration/login
-  /// itself — see EmailVerifiedGuard. Same hash-and-expire pattern as
-  /// passwordResetToken above, not a new mechanism.
-  emailVerified           Boolean             @default(false)
-  otpCodeHash             String?
-  otpExpiresAt            DateTime?
-  guide                   Guide?
-  vendor                  Vendor?
-  guideCompany            GuideCompany?
-  /// Admin-approved KYC gate for yoEcoPay/Wallet — separate from
-  /// emailVerified (which only gates login). Pre-existing accounts are
-  /// backfilled to 'approved' by migration so nobody with wallet history
-  /// gets locked out retroactively; new registrations start at 'none'.
-  identityStatus          String              @default("none")
-  identityDocUrls         String[]            @default([])
-  identityRejectionReason String?
+  TOURIST
+  GUIDE
 }
 
+enum VisitorType {
+  VISITOR
+  INVESTOR
+  LAYOVER
+  EXPERT
+}
+
+enum GuideType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  PDF
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  MOMO
+}
+
+model User {
+  id                 String        @id @default(uuid())
+  fullName           String
+  email              String        @unique
+  phone              String?
+  password           String
+  nationality        String
+  role               UserRole
+  visitorType        VisitorType?
+  profileImage       String?
+  arrivalDate        DateTime?
+  departureDate      DateTime?
+  defaultLanguage    String?
+  inAppNotifications Boolean       @default(true)
+  emailNotifications Boolean       @default(true)
+  currentRegionId    String?
+  currentRegion      Region?       @relation(fields: [currentRegionId], references: [id])
+  guideProfile         GuideProfile?
+  reviews              Review[]
+  bookings             Booking[]
+  wallet               Wallet?
+  walletTransactions   WalletTransaction[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([currentRegionId])
+}
+
+model GuideProfile {
+  id            String         @id @default(uuid())
+  userId        String         @unique
+  user          User           @relation(fields: [userId], references: [id])
+  guideType     GuideType
+  companyName   String?
+  languages     String[]
+  numberOfTours Int            @default(0)
+  reviews       Review[]
+  vehicles      GuideVehicle[]
+  bookings      Booking[]
+}
+
+model Region {
+  id        String     @id @default(uuid())
+  name      String
+  users     User[]
+  tourTypes TourType[]
+}
+
+model TourType {
+  id       String    @id @default(uuid())
+  regionId String
+  region   Region    @relation(fields: [regionId], references: [id])
+  name     String
+  packages Package[]
+
+  @@index([regionId])
+}
+
+model Package {
+  id            String         @id @default(uuid())
+  tourTypeId    String
+  tourType      TourType       @relation(fields: [tourTypeId], references: [id])
+  name          String
+  description   String
+  durationHours Int
+  price         Decimal        @db.Decimal(12, 2)
+  tours         Json?
+  media         PackageMedia[]
+  reviews       Review[]
+  bookings      Booking[]
+  createdAt     DateTime       @default(now())
+
+  @@index([tourTypeId])
+}
+
+model PackageMedia {
+  id        String    @id @default(uuid())
+  packageId String
+  package   Package   @relation(fields: [packageId], references: [id])
+  url       String
+  type      MediaType
+
+  @@index([packageId])
+}
+
+model Vehicle {
+  id           String         @id @default(uuid())
+  name         String
+  icon         String?
+  seats        Int
+  pricePerHour Decimal        @db.Decimal(12, 2)
+  pricePerDay  Decimal        @db.Decimal(12, 2)
+  guides       GuideVehicle[]
+  bookings     Booking[]
+}
+
+model GuideVehicle {
+  guideId   String
+  vehicleId String
+  guide     GuideProfile @relation(fields: [guideId], references: [id])
+  vehicle   Vehicle      @relation(fields: [vehicleId], references: [id])
+
+  @@id([guideId, vehicleId])
+  @@index([vehicleId])
+}
+
+model Review {
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id])
+  guideId    String?
+  guide      GuideProfile? @relation(fields: [guideId], references: [id])
+  packageId  String?
+  package    Package?      @relation(fields: [packageId], references: [id])
+  message    String?
+  starRating Int
+  createdAt  DateTime      @default(now())
+
+  @@index([userId])
+  @@index([guideId])
+  @@index([packageId])
+}
+
+model Booking {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  packageId      String
+  package        Package      @relation(fields: [packageId], references: [id])
+  vehicleId      String
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
+  guideId        String
+  guide          GuideProfile @relation(fields: [guideId], references: [id])
+  scheduleDate   DateTime
+  pickupLocation String
+  totalDue       Decimal              @db.Decimal(12, 2)
+  payment        Payment?
+  walletEntries  WalletTransaction[]
+  createdAt      DateTime             @default(now())
+
+  @@index([userId])
+  @@index([packageId])
+  @@index([vehicleId])
+  @@index([guideId])
+}
+
+/// Per-user balance kept in integer cents. A wallet is created lazily on
+/// first read for a user that doesn't have one.
+model Wallet {
+  id           String              @id @default(cuid())
+  userId       String              @unique
+  balanceCents Int                 @default(0)
+  currency     String              @default("USD")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions WalletTransaction[]
+}
 
 model WalletTransaction {
   id             String   @id @default(cuid())
@@ -87,588 +223,19 @@ model WalletTransaction {
   wallet         Wallet?  @relation(fields: [walletId], references: [id], onDelete: Cascade)
   booking        Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   user           User?    @relation(fields: [userId], references: [id])
-}
 
-model EsimOrder {
-  id            String   @id @default(cuid())
-  userId        String
-  bundleId      String
-  deliveryEmail String
-  status        String   @default("pending")
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id])
-}
-
-model ShuttleBooking {
-  id           String   @id @default(cuid())
-  userId       String
-  dropOffPoint String
-  slotTime     DateTime
-  status       String   @default("confirmed")
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
-}
-
-model TripProfile {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  destinationCity String
-  arrivalDate     DateTime?
-  departureDate   DateTime?
-  tripPurpose     String?
-  nationality     String?
-  freeSlots       String?
-  experienceTypes String[]
-  updatedAt       DateTime  @updatedAt
-  user            User      @relation(fields: [userId], references: [id])
-}
-
-model EventInterest {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  eventIds        String[]
-  reminderEnabled Boolean  @default(false)
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id])
-}
-
-model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
-  body      String
-  createdAt DateTime @default(now())
-  isRead    Boolean  @default(false)
-  metadata  String?
-  type      String   @default("general")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-}
-
-/// Database-driven role. Each role carries a list of permission strings —
-/// the auth layer expands the user's permission set at request time, so
-/// editing a role's permissions takes effect immediately on the next call.
-model Role {
-  key         String   @id
-  label       String
-  permissions String[] @default([])
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  users       User[]
-}
-
-/// Mirrors the TrippotoPlace data class in packages/yoguide_shared.
-model Place {
-  id                 String    @id
-  name               String
-  tagline            String
-  kind               String
-  latitude           Float
-  longitude          Float
-  address            String
-  phone              String
-  hours              String
-  rating             Float
-  priceLabel         String
-  images             String[]  @default([])
-  tags               String[]  @default([])
-  about              String
-  venueRef           String?
-  experienceAdultUsd Int       @default(0)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  bookings           Booking[]
-}
-
-/// Per-user balance kept in integer cents. A wallet is created lazily on
-/// first read for a user that doesn't have one. `currency` ties the wallet
-/// to a single denomination — cross-currency conversion is out of scope
-/// until we wire MoMo + a real FX feed.
-model Wallet {
-  id           String              @id @default(cuid())
-  userId       String              @unique
-  balanceCents Int                 @default(0)
-  currency     String              @default("USD")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions WalletTransaction[]
-}
-
-/// One reserved purchase. `type` covers every flow the apps already render:
-/// tour | experience | hotel | guide | rental | shop
-/// Type-specific payload (dates, adult count, hotel SKU, …) lives in the
-/// `details` JSON column so the row shape stays stable while the app
-/// evolves. Always store amounts in integer cents to keep arithmetic exact.
-model Booking {
-  id            String               @id @default(cuid())
-  userId        String
-  type          String
-  status        String               @default("pending")
-  totalCents    Int
-  currency      String               @default("USD")
-  placeId       String?
-  tourId        String?
-  guideId       String?
-  /// Set for `type: 'hotel'` bookings against a self-registered vendor —
-  /// room/dates/guest-count specifics live in `details` (jsonb), same
-  /// convention as every other booking type.
-  vendorId      String?
-  quantity      Int                  @default(1)
-  details       Json                 @default("{}")
-  scheduledAt   DateTime?
-  notes         String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  user          User                 @relation(fields: [userId], references: [id])
-  place         Place?               @relation(fields: [placeId], references: [id])
-  tour          Tour?                @relation(fields: [tourId], references: [id])
-  guide         Guide?               @relation(fields: [guideId], references: [id])
-  vendor        Vendor?              @relation(fields: [vendorId], references: [id])
-  transactions  BookingTransaction[]
-  walletEntries WalletTransaction[]
-}
-
-/// Money movement attached to a booking — charges and refunds. `method`
-/// is the funding source (wallet / card / momo / cash). Status walks
-/// pending → settled / failed; once settled it cannot be re-settled.
-model BookingTransaction {
-  id          String   @id @default(cuid())
-  bookingId   String
-  kind        String
-  method      String
-  amountCents Int
-  currency    String   @default("USD")
-  status      String   @default("pending")
-  externalRef String?
-  notes       String?
-  createdAt   DateTime @default(now())
-  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-}
-
-/// A city or region the platform covers. Starts with a single seed entry
-/// (Rwanda · Musanze) and is the natural unit to expand into other countries.
-model City {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  name        String
-  country     String
-  region      String?
-  description String?
-  latitude    Float
-  longitude   Float
-  imageUrl    String?
-  isFeatured  Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  events      Event[]
-  tours       Tour[]
-}
-
-/// Festivals, concerts, public events tied to a city. Visible in the apps'
-/// "What's on" feed.
-model Event {
-  id          String    @id @default(cuid())
-  cityId      String
-  title       String
-  description String
-  startsAt    DateTime
-  endsAt      DateTime?
-  venue       String?
-  priceLabel  String    @default("Free")
-  coverImage  String?
-  tags        String[]  @default([])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  city        City      @relation(fields: [cityId], references: [id], onDelete: Cascade)
-}
-
-/// A localised translator phrase pack — Kinyarwanda, English, French.
-/// Read-only; entries are seeded from CSV/JSON.
-model Phrase {
-  id          String   @id @default(cuid())
-  category    String
-  english     String
-  kinyarwanda String
-  french      String
-  notes       String?
-  createdAt   DateTime @default(now())
-}
-
-/// A bookable tour package — moto, EV-car, walking, multi-day. Each tour
-/// carries a curated list of TourStops in order.
-enum TourCategory {
-  CITY
-  ADVENTURE
-  COMMUNITY
-  GASTRONOMY
-  CUSTOM
-}
-
-model Tour {
-  id              String        @id @default(cuid())
-  cityId          String?
-  title           String
-  description     String
-  category        TourCategory  @default(CITY)
-  vehicleType     String
-  durationMinutes Int
-  priceCents      Int
-  currency        String        @default("USD")
-  isCustom        Boolean       @default(false)
-  coverImage      String?
-  highlights      String[]      @default([])
-  includes        String[]      @default([])
-  maxGroupSize    Int?          @default(10)
-  rating          Float         @default(5.0)
-  reviewCount     Int           @default(0)
-  isPublished     Boolean       @default(true)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  city            City?         @relation(fields: [cityId], references: [id])
-  stops           TourStop[]
-  bookings        Booking[]
-
-  guideId         String?
-  guide           Guide?        @relation(fields: [guideId], references: [id], onDelete: SetNull)
-
-  companyId       String?
-  company         GuideCompany? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-
-  @@index([category])
-  @@index([cityId])
-  @@index([guideId])
-  @@index([companyId])
-}
-
-model TourStop {
-  id              String   @id @default(cuid())
-  tourId          String
-  ordinal         Int
-  title           String
-  description     String?
-  durationMinutes Int      @default(30)
-  latitude        Float?
-  longitude       Float?
-  placeId         String?
-  createdAt       DateTime @default(now())
-  tour            Tour     @relation(fields: [tourId], references: [id], onDelete: Cascade)
-
-  @@unique([tourId, ordinal])
-}
-
-/// A platform guide. Public profile lives here; document verification
-/// records sit on a separate `GuideDocument` table.
-model Guide {
-  id              String          @id @default(cuid())
-  userId          String?         @unique
-  /// Populated when a user self-applies via POST /guides/apply — admin-
-  /// created guides (POST /admin/guides) have no linked user account.
-  user            User?           @relation(fields: [userId], references: [id])
-  fullName        String
-  emoji           String?
-  bio             String?
-  avatarUrl       String?
-  rating          Float           @default(0)
-  reviewCount     Int             @default(0)
-  toursCompleted  Int             @default(0)
-  responseRatePct Int             @default(95)
-  hourlyRateCents Int             @default(0)
-  currency        String          @default("USD")
-  specialties     String[]        @default([])
-  languages       String[]        @default([])
-  yearsExperience Int             @default(0)
-  isVerified      Boolean         @default(false)
-  isAvailable     Boolean         @default(true)
-  city            String?
-  /// ── Gastronomy-only fields ──
-  /// Populated for guides whose `specialties` includes "#Food" (the
-  /// frontend's chef convention). Null for plain tour guides.
-  restaurantName     String?
-  gastronomyCategory String?
-  experienceName     String?
-  gastronomyArea     String?
-  chefTags           String[]        @default([])
-  /// Fixed tasting-menu courses: [{course, description}, ...]
-  menuCourses        Json?
-  /// Video-teaser narrative: {title, durationLabel, text}
-  story              Json?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  documents       GuideDocument[]
-  bookings        Booking[]
-  packages        Tour[]
-  /// Verification lifecycle — 'isVerified' above is kept in sync
-  /// (isVerified = status === 'approved') for back-compat with existing
-  /// readers; status/rejectionReason are the source of truth going forward.
-  status          String          @default("pending")
-  rejectionReason String?
-  /// Nullable — a guide may be self-employed (null) or work under a
-  /// verified Guide Company.
-  companyId       String?
-  company         GuideCompany?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
-
-  @@index([companyId])
-}
-
-model GuideDocument {
-  id         String   @id @default(cuid())
-  guideId    String
-  kind       String
-  url        String
-  status     String   @default("pending")
-  reviewedBy String?
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  guide      Guide    @relation(fields: [guideId], references: [id], onDelete: Cascade)
-}
-
-/// User reviews on places, guides, or tours. Moderation queue is admin-driven.
-model Review {
-  id        String   @id @default(cuid())
-  authorId  String
-  rating    Int
-  title     String?
-  body      String
-  placeId   String?
-  guideId   String?
-  tourId    String?
-  vendorId  String?
-  status    String   @default("pending")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  vendor    Vendor?  @relation(fields: [vendorId], references: [id])
-
-  @@index([placeId])
-  @@index([guideId])
-  @@index([tourId])
-  @@index([vendorId])
-}
-
-/// User-saved places, guides, or tours.
-model Favorite {
-  id        String   @id @default(cuid())
-  userId    String
-  placeId   String?
-  guideId   String?
-  tourId    String?
-  createdAt DateTime @default(now())
-
+  @@index([walletId])
+  @@index([bookingId])
   @@index([userId])
 }
 
-/// Multi-day or curated trip plan a user assembles by adding places.
-model Itinerary {
-  id          String          @id @default(cuid())
-  userId      String
-  title       String
-  description String?
-  startDate   DateTime?
-  endDate     DateTime?
-  isPublic    Boolean         @default(false)
-  coverImage  String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  items       ItineraryItem[]
-}
-
-model ItineraryItem {
-  id          String    @id @default(cuid())
-  itineraryId String
-  ordinal     Int
-  placeId     String?
-  notes       String?
-  scheduledAt DateTime?
-  createdAt   DateTime  @default(now())
-  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-}
-
-/// Direct messages — guide ↔ tourist mainly.
-model MessageThread {
-  id            String    @id @default(cuid())
-  participantA  String
-  participantB  String
-  subject       String?
-  lastMessageAt DateTime  @default(now())
-  createdAt     DateTime  @default(now())
-  messages      Message[]
-
-  @@index([participantA])
-  @@index([participantB])
-}
-
-model Message {
-  id          String        @id @default(cuid())
-  threadId    String
-  senderId    String
-  body        String
-  attachments String[]      @default([])
-  readAt      DateTime?
-  createdAt   DateTime      @default(now())
-  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-
-  @@index([threadId])
-}
-
-/// A platform-listed business: shop, hotel, tour operator, transport.
-/// Products and (eventually) bookable inventory tie back to a vendor.
-model Vendor {
-  id              String    @id @default(cuid())
-  slug            String    @unique
-  name            String
-  category        String
-  description     String?
-  contact         String?
-  email           String?
-  phone           String?
-  website         String?
-  city            String?
-  isVerified      Boolean   @default(false)
-  isActive        Boolean   @default(true)
-  rating          Float     @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  products        Product[]
-  /// Set when a user self-applies via POST /vendors/apply — admin-created
-  /// vendors (POST /admin/vendors) have no linked owner account.
-  ownerId         String?   @unique
-  owner           User?     @relation(fields: [ownerId], references: [id])
-  /// Tourist-facing hotel-browsing fields (HotelListPage/HotelDetailPage).
-  address         String?
-  amenities       String[]  @default([])
-  checkInTime     String?
-  checkOutTime    String?
-  bookings        Booking[]
-  reviews         Review[]
-  /// Verification lifecycle — see Guide's identical comment for the
-  /// isVerified/status sync convention.
-  status          String    @default("pending")
-  rejectionReason String?
-}
-
-/// Souvenirs, accommodation packages, anything saleable.
-model Product {
-  id          String      @id @default(cuid())
-  vendorId    String?
-  slug        String      @unique
-  title       String
-  description String
-  category    String
-  priceCents  Int
-  currency    String      @default("USD")
-  images      String[]    @default([])
-  badge       String?
-  inStock     Boolean     @default(true)
-  inventory   Int?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  vendor      Vendor?     @relation(fields: [vendorId], references: [id])
-  orderItems  OrderItem[]
-}
-
-/// Cart-checkout output. One order can have many line items.
-model Order {
-  id           String      @id @default(cuid())
-  userId       String
-  status       String      @default("placed")
-  totalCents   Int
-  currency     String      @default("USD")
-  shippingType String?
-  shippingNote String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  items        OrderItem[]
-
-  @@index([userId])
-}
-
-model OrderItem {
-  id         String   @id @default(cuid())
-  orderId    String
-  productId  String
-  quantity   Int
-  priceCents Int
-  currency   String   @default("USD")
-  createdAt  DateTime @default(now())
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product    Product  @relation(fields: [productId], references: [id])
-}
-
-/// Append-only ledger of admin / system actions. Indexed for the audit log
-/// page and for replay if anything looks off.
-model AuditLog {
-  id         String   @id @default(cuid())
-  actorId    String?
-  actorEmail String?
-  action     String
-  entity     String
-  entityId   String?
-  metadata   Json?
-  createdAt  DateTime @default(now())
-
-  @@index([entity, entityId])
-  @@index([actorId])
-}
-
-/// Lightweight client-side analytics ingestion endpoint. Schemaless payload
-/// — keep it ingest-only here; aggregation lives in a separate pipeline.
-model AnalyticsEvent {
-  id         String   @id @default(cuid())
-  userId     String?
-  sessionId  String?
-  name       String
-  properties Json     @default("{}")
-  occurredAt DateTime @default(now())
-  receivedAt DateTime @default(now())
-
-  @@index([name])
-  @@index([userId])
-}
-
-/// A registered guide-tour business — the doc's "Guide Company" role.
-/// Owns Guides (companyId), Tours/"packages" (companyId), and Vehicles.
-/// Same self-registration + admin-verify lifecycle as Vendor/Guide.
-model GuideCompany {
-  id              String    @id @default(cuid())
-  /// Set when a user self-applies via POST /guide-companies/apply —
-  /// admin-created companies have no linked owner account.
-  ownerId         String?   @unique
-  owner           User?     @relation(fields: [ownerId], references: [id])
-  slug            String    @unique
-  name            String
-  description     String?
-  contact         String?
-  email           String?
-  phone           String?
-  website         String?
-  city            String?
-  status          String    @default("pending")
-  rejectionReason String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  guides          Guide[]
-  packages        Tour[]
-  vehicles        Vehicle[]
-}
-
-/// A company-owned vehicle — has no independent existence outside its
-/// owning company, unlike Guide/Tour which may be ownerless.
-model Vehicle {
-  id          String       @id @default(cuid())
-  companyId   String
-  company     GuideCompany @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  type        String
-  label       String
-  plateNumber String?
-  seats       Int?
-  photoUrl    String?
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  @@index([companyId])
+model Payment {
+  id             String        @id @default(uuid())
+  bookingId      String        @unique
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+  amount         Decimal       @db.Decimal(12, 2)
+  status         PaymentStatus
+  paymentMethod  PaymentMethod
+  transactionRef String?
+  createdAt      DateTime      @default(now())
 }
