@@ -333,7 +333,7 @@ async function main() {
       fullName: 'Eric Mugisha',
       languages: [Language.EN, Language.FR, Language.RW],
       vehicles: ['seed-vehicle-walking', 'seed-vehicle-motorbike', 'seed-vehicle-evcar'],
-      avatar: 'https://ui-avatars.com/api/?name=Eric+Mugisha&size=400&background=1B7A4B&color=fff',
+      avatar: 'https://randomuser.me/api/portraits/men/83.jpg',
       stars: [5, 5, 4, 5],
     },
     {
@@ -342,7 +342,7 @@ async function main() {
       fullName: 'Claudine Uwase',
       languages: [Language.EN, Language.RW, Language.SW],
       vehicles: ['seed-vehicle-evcar', 'seed-vehicle-van'],
-      avatar: 'https://ui-avatars.com/api/?name=Claudine+Uwase&size=400&background=0E5C8A&color=fff',
+      avatar: 'https://randomuser.me/api/portraits/women/30.jpg',
       stars: [5, 4, 5],
     },
     {
@@ -351,7 +351,7 @@ async function main() {
       fullName: 'Jean Bosco Habimana',
       languages: [Language.EN, Language.FR],
       vehicles: ['seed-vehicle-van', 'seed-vehicle-bus'],
-      avatar: 'https://ui-avatars.com/api/?name=Jean+Bosco&size=400&background=8A5A0E&color=fff',
+      avatar: 'https://randomuser.me/api/portraits/men/80.jpg',
       stars: [4, 4, 5, 5, 5],
     },
   ];
@@ -362,7 +362,7 @@ async function main() {
       email: 'chef.divine@yoguide.app',
       fullName: 'Divine Ingabire',
       languages: [Language.EN, Language.RW, Language.FR],
-      avatar: 'https://ui-avatars.com/api/?name=Divine+Ingabire&size=400&background=7A2E4A&color=fff',
+      avatar: 'https://randomuser.me/api/portraits/women/16.jpg',
       stars: [5, 5, 4],
       gastronomy: {
         restaurantName: 'Chez Divine, Kiyovu',
@@ -387,7 +387,7 @@ async function main() {
       email: 'chef.olivier@yoguide.app',
       fullName: 'Olivier Nsengimana',
       languages: [Language.EN, Language.FR],
-      avatar: 'https://ui-avatars.com/api/?name=Olivier+N&size=400&background=2E5A7A&color=fff',
+      avatar: 'https://randomuser.me/api/portraits/men/54.jpg',
       stars: [5, 4, 5, 5],
       gastronomy: {
         restaurantName: 'Kurema Farmhouse, Rebero',
