@@ -124,12 +124,12 @@ export class AuthController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: 'Get current user (JWT payload)',
-    description: 'Returns the authenticated user record including permissions and verification flags.',
+    summary: 'Get current user profile',
+    description: 'Returns the authenticated user\'s full profile from the database.',
   })
-  @ApiOkResponse({ description: 'Currently authenticated user.' })
+  @ApiOkResponse({ type: UserProfileResponse })
   me(@CurrentUser() user: AuthenticatedUser) {
-    return user;
+    return this.auth.getProfile(user.id);
   }
 
   @Patch('me')
