@@ -121,6 +121,7 @@ async function main() {
   const tourTypes: Array<{ id: string; regionId: string; name: string }> = [
     { id: 'seed-tourtype-kigali-city', regionId: 'seed-region-kigali', name: 'City Tours' },
     { id: 'seed-tourtype-kigali-culture', regionId: 'seed-region-kigali', name: 'Culture & Heritage' },
+    { id: 'seed-tourtype-kigali-gastronomy', regionId: 'seed-region-kigali', name: 'Gastronomy' },
     { id: 'seed-tourtype-city', regionId: 'seed-region-musanze', name: 'Adventure Tours' },
     { id: 'seed-tourtype-musanze-community', regionId: 'seed-region-musanze', name: 'Community Tours' },
     { id: 'seed-tourtype-rubavu-nature', regionId: 'seed-region-rubavu', name: 'Nature & Scenic' },
@@ -179,6 +180,35 @@ async function main() {
         { id: 'seed-tour-ethnographic', title: 'Kandt House Museum', description: 'Rwanda’s natural history and colonial past in the house of Richard Kandt.', duration: 2, price: 25 },
         { id: 'seed-tour-weaving', title: 'Agaseke Weaving Workshop', description: 'Weave your own peace basket with a cooperative of master weavers.', duration: 2, price: 35 },
         { id: 'seed-tour-drumming', title: 'Ingoma Drumming Session', description: 'Learn the rhythms of the royal drums — loud, joyful, unforgettable.', duration: 2, price: 30 },
+      ],
+    },
+    // Chef experiences: one package per chef, title MUST equal the chef's
+    // gastronomy.experienceName — the app books the experience by matching
+    // the two.
+    {
+      id: 'seed-package-chef-divine',
+      tourTypeId: 'seed-tourtype-kigali-gastronomy',
+      name: 'Traditional Kinyarwanda Feast',
+      description:
+        'Chef Divine cooks the meal her grandmother taught her — isombe, ibirayi, fresh chapati and banana beer — around one shared table.',
+      durationHours: 3,
+      price: 35,
+      media: ['kigali-dinner', 'kigali-market'],
+      tours: [
+        { id: 'seed-tour-feast-session', title: 'Feast Session at the Chef’s Table', description: 'Three courses, stories included. Per-guest price.', duration: 3, price: 35 },
+      ],
+    },
+    {
+      id: 'seed-package-chef-olivier',
+      tourTypeId: 'seed-tourtype-kigali-gastronomy',
+      name: 'Farm-to-Table Supper Club',
+      description:
+        'Harvest with Chef Olivier on his Rebero hillside plot, then cook and eat what you picked as the city lights come on.',
+      durationHours: 3,
+      price: 45,
+      media: ['kigali-market', 'kigali-dinner'],
+      tours: [
+        { id: 'seed-tour-supper-session', title: 'Supper Club Evening', description: 'Garden harvest, open-fire cooking, dinner with a view. Per-guest price.', duration: 3, price: 45 },
       ],
     },
     {
@@ -326,6 +356,60 @@ async function main() {
     },
   ];
 
+  // ── Chefs (gastronomy guides) ──────────────────────────────
+  const chefSeeds = [
+    {
+      email: 'chef.divine@yoguide.app',
+      fullName: 'Divine Ingabire',
+      languages: [Language.EN, Language.RW, Language.FR],
+      avatar: 'https://ui-avatars.com/api/?name=Divine+Ingabire&size=400&background=7A2E4A&color=fff',
+      stars: [5, 5, 4],
+      gastronomy: {
+        restaurantName: 'Chez Divine, Kiyovu',
+        gastronomyCategory: 'homestyle',
+        experienceName: 'Traditional Kinyarwanda Feast',
+        gastronomyArea: 'Kigali – Kiyovu',
+        chefTags: ['Homestyle', 'Vegetarian friendly', 'Family recipes'],
+        perGuestUsd: 35,
+        menuCourses: [
+          { course: 'Isombe & ibirayi', description: 'Cassava leaves slow-cooked with groundnut, roast potatoes.' },
+          { course: 'Brochettes & chapati', description: 'Grilled goat skewers with fresh chapati off the pan.' },
+          { course: 'Ikivuguto & honey banana', description: 'Fermented milk with caramelised banana and local honey.' },
+        ],
+        story: {
+          title: 'The table my grandmother built',
+          durationLabel: '2 min',
+          text: 'Divine learned to cook feeding twelve cousins from one pot on Nyamirambo hill. Her supper table seats strangers and sends home friends.',
+        },
+      },
+    },
+    {
+      email: 'chef.olivier@yoguide.app',
+      fullName: 'Olivier Nsengimana',
+      languages: [Language.EN, Language.FR],
+      avatar: 'https://ui-avatars.com/api/?name=Olivier+N&size=400&background=2E5A7A&color=fff',
+      stars: [5, 4, 5, 5],
+      gastronomy: {
+        restaurantName: 'Kurema Farmhouse, Rebero',
+        gastronomyCategory: 'farmToTable',
+        experienceName: 'Farm-to-Table Supper Club',
+        gastronomyArea: 'Kigali – Rebero',
+        chefTags: ['Farm-to-table', 'Open fire', 'Seasonal'],
+        perGuestUsd: 45,
+        menuCourses: [
+          { course: 'Garden plate', description: 'Whatever is ripe this week, dressed with tamarillo vinaigrette.' },
+          { course: 'Fire-roasted tilapia', description: 'Lake fish over eucalyptus coals with dodo greens.' },
+          { course: 'Passion-fruit pudding', description: 'From vines you will walk past on the way in.' },
+        ],
+        story: {
+          title: 'Six hundred trees later',
+          durationLabel: '2 min',
+          text: 'A vet by training, Olivier planted an orchard on Rebero and started cooking for the neighbours who helped him carry water. The neighbours never left.',
+        },
+      },
+    },
+  ];
+
   const reviewer = await upsertUser({
     email: 'reviewer@yoguide.app',
     password: 'Y0guide#Rev2026',
@@ -363,6 +447,36 @@ async function main() {
         guideId: profile.id,
         starRating,
         message: ['Fantastic day out!', 'Knows every corner.', 'Would book again.', 'Great with the kids.', 'Flawless organisation.'][i % 5],
+      })),
+    });
+  }
+
+  for (const c of chefSeeds) {
+    const user = await upsertUser({
+      email: c.email,
+      password: 'Y0guide#Chef2026',
+      fullName: c.fullName,
+      nationality: 'Rwanda',
+      role: UserRole.GUIDE,
+      profileImage: c.avatar,
+    });
+    const profile = await prisma.guideProfile.upsert({
+      where: { userId: user.id },
+      update: { languages: c.languages, gastronomy: c.gastronomy },
+      create: {
+        userId: user.id,
+        guideType: 'INDIVIDUAL',
+        languages: c.languages,
+        gastronomy: c.gastronomy,
+      },
+    });
+    await prisma.review.deleteMany({ where: { guideId: profile.id, userId: reviewer.id } });
+    await prisma.review.createMany({
+      data: c.stars.map((starRating, i) => ({
+        userId: reviewer.id,
+        guideId: profile.id,
+        starRating,
+        message: ['Best meal of the whole trip.', 'Felt like family dinner.', 'Come hungry, seriously.', 'The story alone is worth it.'][i % 4],
       })),
     });
   }

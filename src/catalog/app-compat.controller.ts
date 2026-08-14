@@ -74,24 +74,48 @@ export class AppCompatController {
       const rating = ratings.length
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
         : 0;
+      // Chef extras live in GuideProfile.gastronomy (JSON). The app's
+      // gastronomy flow filters on specialties containing '#Food' and
+      // reads the chef fields directly off the guide row.
+      const gastro = (g.gastronomy ?? null) as {
+        restaurantName?: string;
+        gastronomyCategory?: string;
+        experienceName?: string;
+        gastronomyArea?: string;
+        chefTags?: string[];
+        perGuestUsd?: number;
+        menuCourses?: Array<{ course: string; description: string }>;
+        story?: { title: string; durationLabel: string; text: string };
+      } | null;
       return {
         id: g.id,
         userId: g.userId,
         fullName: g.user.fullName,
-        emoji: '🧭',
+        emoji: gastro ? '👨‍🍳' : '🧭',
         avatarUrl: g.user.profileImage,
         city: 'kigali',
         rating: Math.round(rating * 10) / 10,
         reviewCount: ratings.length,
         toursCompleted: g._count.bookings,
         responseRatePct: 95,
-        specialties: [],
+        specialties: gastro ? ['#Food'] : [],
         languages: g.languages,
         bio: g.companyName ? `Guide at ${g.companyName}` : '',
-        hourlyRateCents: null,
+        hourlyRateCents: gastro?.perGuestUsd ? Math.round(gastro.perGuestUsd * 100) : null,
         currency: 'USD',
         isVerified: true,
         isAvailable: true,
+        ...(gastro
+          ? {
+              restaurantName: gastro.restaurantName,
+              gastronomyCategory: gastro.gastronomyCategory,
+              experienceName: gastro.experienceName,
+              gastronomyArea: gastro.gastronomyArea,
+              chefTags: gastro.chefTags ?? [],
+              menuCourses: gastro.menuCourses ?? [],
+              story: gastro.story,
+            }
+          : {}),
       };
     });
   }

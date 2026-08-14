@@ -123,6 +123,12 @@ model GuideProfile {
   companyName   String?
   languages     Language[]
   numberOfTours Int            @default(0)
+  /// Chef/gastronomy extras for guides who host dining experiences:
+  /// { restaurantName, gastronomyCategory, experienceName, gastronomyArea,
+  ///   chefTags[], menuCourses[{course,description}],
+  ///   story{title,durationLabel,text}, perGuestUsd }.
+  /// Null for regular tour guides.
+  gastronomy    Json?
   reviews       Review[]
   vehicles      GuideVehicle[]
   bookings      Booking[]
