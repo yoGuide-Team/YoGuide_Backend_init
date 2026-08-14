@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
 import { UserProfileResponse, RegisterPendingResponse } from './auth/dto';
+import { TripResponse } from './me/trips.dto';
 import {
   ApiErrorResponse,
   AuthSessionResponse,
@@ -81,6 +82,7 @@ async function bootstrap() {
       AuthUserResponse,
       UserProfileResponse,
       RegisterPendingResponse,
+      TripResponse,
       HealthResponse,
       OkResponse,
       WalletResponse,

@@ -88,7 +88,10 @@ export class AuthController {
   @Post('google')
   @ApiOperation({
     summary: 'Google Sign-In',
-    description: 'Verifies Google token and returns JWT. Google accounts are auto-verified.',
+    description:
+      'Verifies a Google ID token and returns a yoGuide JWT. ' +
+      'Send `{ "idToken": "<google id token>" }` from Flutter `google_sign_in`. ' +
+      'Also accepts `token`, `credential`, or nested `payload.idToken` for legacy/web clients.',
   })
   @ApiOkResponse({ type: AuthSessionResponse })
   @ApiUnauthorizedResponse({ type: ApiErrorResponse })

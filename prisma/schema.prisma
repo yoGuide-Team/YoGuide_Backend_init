@@ -84,6 +84,7 @@ model User {
   emailNotifications Boolean       @default(true)
   currentRegionId    String?
   currentRegion      Region?       @relation(fields: [currentRegionId], references: [id])
+  trips                Trip[]
   guideProfile         GuideProfile?
   reviews              Review[]
   bookings             Booking[]
@@ -94,6 +95,24 @@ model User {
   updatedAt            DateTime            @updatedAt
 
   @@index([currentRegionId])
+}
+
+/// A planned or past visit — users can have many trips.
+model Trip {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  regionId      String?
+  region        Region?  @relation(fields: [regionId], references: [id])
+  label         String?
+  arrivalDate   DateTime
+  departureDate DateTime
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([regionId])
 }
 
 model GuideProfile {
@@ -113,6 +132,7 @@ model Region {
   id        String     @id @default(uuid())
   name      String
   users     User[]
+  trips     Trip[]
   tourTypes TourType[]
 }
 
