@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
 import { UserProfileResponse, RegisterPendingResponse } from './auth/dto';
+import { TripResponse } from './me/trips.dto';
 import {
   ApiErrorResponse,
   AuthSessionResponse,
@@ -21,11 +22,6 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  app.enableCors({
-    origin: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-  });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
@@ -81,6 +77,7 @@ async function bootstrap() {
       AuthUserResponse,
       UserProfileResponse,
       RegisterPendingResponse,
+      TripResponse,
       HealthResponse,
       OkResponse,
       WalletResponse,

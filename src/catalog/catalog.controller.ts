@@ -19,6 +19,28 @@ export class CatalogController {
     });
   }
 
+  @Get('languages')
+  @ApiOperation({ summary: 'List supported languages' })
+  listLanguages() {
+    return [
+      { code: 'EN', label: 'English' },
+      { code: 'FR', label: 'Français' },
+      { code: 'SW', label: 'Kiswahili' },
+      { code: 'RW', label: 'Ikinyarwanda' },
+    ];
+  }
+
+  @Get('visitor-types')
+  @ApiOperation({ summary: 'List visitor types' })
+  listVisitorTypes() {
+    return [
+      { value: 'VISITOR', label: 'Visitor – Leisure and Conference' },
+      { value: 'INVESTOR', label: 'Visitor – Investor and Business' },
+      { value: 'LAYOVER', label: 'Layover in KGL' },
+      { value: 'EXPERT', label: 'Expats and Residents' },
+    ];
+  }
+
   @Get('tour-types')
   @ApiOperation({ summary: 'List tour types, optionally by region' })
   listTourTypes(@Query('regionId') regionId?: string) {

@@ -67,19 +67,21 @@ export class ResendOtpDto {
 }
 
 export class GoogleLoginDto {
-  @ApiPropertyOptional({
-    description: 'Google ID token from google_sign_in (idToken, token, or credential accepted).',
+  @ApiProperty({
+    example: 'eyJhbGciOiJSUzI1NiIs...',
+    description:
+      'Google ID token from Flutter google_sign_in or web Google Sign-In. Preferred field — send as { "idToken": "<token>" }.',
   })
   @IsOptional()
   @IsString()
   idToken?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Alias for idToken (legacy clients).' })
   @IsOptional()
   @IsString()
   token?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Google One Tap credential (web).' })
   @IsOptional()
   @IsString()
   credential?: string;
