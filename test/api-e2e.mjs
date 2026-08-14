@@ -53,31 +53,48 @@ async function expect(name, method, path, opts, wantStatus, verify) {
   return body;
 }
 
-const SEED_PACKAGE = 'seed-package-highlights';
-const SEED_VEHICLE = 'seed-vehicle-sedan';
+const SEED_PACKAGE = 'seed-package-kigali-classic';
+const SEED_VEHICLE = 'seed-vehicle-evcar';
 
 // ── Setup: users ─────────────────────────────────────────────
+// Registration is OTP-gated (no token until the email is verified), so
+// throwaway test users are created through the admin API — POST
+// /admin/users creates them pre-verified — then logged in normally.
 console.log('\nSetup');
-const tourist = await expect('register tourist', 'POST', '/auth/register', {
-  body: { email: `t${stamp}@e2e.dev`, password: 'E2e#Pass123', fullName: 'E2E Tourist', nationality: 'Kenya' },
-}, 201);
-const intruder = await expect('register second tourist', 'POST', '/auth/register', {
-  body: { email: `i${stamp}@e2e.dev`, password: 'E2e#Pass123', fullName: 'E2E Intruder', nationality: 'Ghana' },
-}, 201);
-const guide = await expect('register guide', 'POST', '/auth/register', {
-  body: { email: `g${stamp}@e2e.dev`, password: 'E2e#Pass123', fullName: 'E2E Guide', nationality: 'Rwanda', role: 'GUIDE' },
-}, 201);
 const admin = await expect('admin login', 'POST', '/auth/login', {
   body: { email: 'admin@yoguide.app', password: 'Y0guide#Admin2026' },
 }, 201);
-if (!tourist || !intruder || !guide || !admin) {
+if (!admin) {
   console.error('\nSetup failed, aborting.');
   process.exit(1);
 }
-const T = tourist.access_token;
-const I = intruder.access_token;
-const G = guide.access_token;
 const A = admin.access_token;
+
+await expect('register is OTP-gated (no token before verification)', 'POST', '/auth/register', {
+  body: { email: `otp${stamp}@e2e.dev`, password: 'E2e#Pass123', fullName: 'OTP Check', nationality: 'Rwanda' },
+}, 201, (b) =>
+  b.requiresVerification === true && !b.access_token
+    ? null
+    : `unexpected register response: ${JSON.stringify(b).slice(0, 120)}`);
+
+async function makeUser(label, role) {
+  const email = `${label}${stamp}@e2e.dev`;
+  await expect(`admin creates ${label} (pre-verified)`, 'POST', '/admin/users', {
+    token: A,
+    body: { email, password: 'E2e#Pass123', fullName: `E2E ${label}`, nationality: 'Rwanda', role },
+  }, 201);
+  const login = await expect(`${label} login`, 'POST', '/auth/login', {
+    body: { email, password: 'E2e#Pass123' },
+  }, 201);
+  return login?.access_token;
+}
+const T = await makeUser('tourist', 'TOURIST');
+const I = await makeUser('intruder', 'TOURIST');
+const G = await makeUser('guide', 'GUIDE');
+if (!T || !I || !G) {
+  console.error('\nSetup failed, aborting.');
+  process.exit(1);
+}
 
 // ── Guide profile ────────────────────────────────────────────
 console.log('\nGuide · profile');
@@ -154,7 +171,7 @@ await expect('GET /catalog/guides?language=fr filter', 'GET', '/catalog/guides?l
 await expect('GET /catalog/guides?language=sw → excludes guide', 'GET', '/catalog/guides?language=sw', {}, 200,
   (b) => (b.every((g) => g.id !== guideId) ? null : 'filter leaked'));
 await expect('GET /catalog/guides/:id', 'GET', `/catalog/guides/${guideId}`, {}, 200,
-  (b) => (b.user?.fullName === 'E2E Guide' ? null : 'wrong guide'));
+  (b) => (b.user?.fullName === 'E2E guide' ? null : 'wrong guide'));
 await expect('GET /catalog/guides/:id bogus → 404', 'GET', '/catalog/guides/nope', {}, 404);
 
 // ── Custom packages ──────────────────────────────────────────
@@ -168,14 +185,17 @@ await expect('POST /packages/custom empty tourIds → 400', 'POST', '/packages/c
 await expect('POST /packages/custom bogus tour → 404', 'POST', '/packages/custom', {
   token: T, body: { tourIds: ['nope'] },
 }, 404);
-const wantPrice = tours.reduce((s, t) => s + Number(t.price), 0);
-const wantHours = tours.reduce((s, t) => s + t.duration, 0);
+// A handful of tours keeps the custom package realistic (the catalog has
+// dozens now).
+const picked = tours.slice(0, 4);
+const wantPrice = picked.reduce((s, t) => s + Number(t.price), 0);
+const wantHours = picked.reduce((s, t) => s + t.duration, 0);
 const custom = await expect('POST /packages/custom sums price+duration', 'POST', '/packages/custom', {
-  token: T, body: { tourIds: tours.map((t) => t.id), name: 'E2E Custom' },
+  token: T, body: { tourIds: picked.map((t) => t.id), name: 'E2E Custom' },
 }, 201, (b) => {
   if (Number(b.price) !== wantPrice) return `price ${b.price} != ${wantPrice}`;
   if (b.durationHours !== wantHours) return `duration ${b.durationHours} != ${wantHours}`;
-  if (b.tours.length !== tours.length) return `tours ${b.tours.length} != ${tours.length}`;
+  if (b.tours.length !== picked.length) return `tours ${b.tours.length} != ${picked.length}`;
   if (!b.isCustom) return 'isCustom not set';
   return null;
 });
@@ -212,8 +232,12 @@ await expect('POST /bookings bogus guide → 404', 'POST', '/bookings', {
 await expect('POST /bookings bad paymentMethod → 400', 'POST', '/bookings', {
   token: T, body: { ...bookingBody, paymentMethod: 'GOLD' },
 }, 400);
-// seed sedan: 25/h, 150/day — custom package duration is wantHours (< 24h)
-const wantVehicleCost = Math.min(25 * wantHours, 150);
+// Mirror the server's vehicle pricing (EV Car: $25/h, $200/day): full days
+// at the day rate, remainder hourly but never more than another day.
+const EV_HOUR = 25, EV_DAY = 200;
+const wantVehicleCost =
+  Math.floor(wantHours / 24) * EV_DAY +
+  Math.min((wantHours % 24) * EV_HOUR, EV_DAY);
 const wantTotal = wantPrice + wantVehicleCost;
 const b1 = await expect('POST /bookings computes totalDue server-side', 'POST', '/bookings', {
   token: T, body: bookingBody,
