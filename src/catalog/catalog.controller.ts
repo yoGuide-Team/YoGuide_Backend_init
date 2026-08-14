@@ -102,7 +102,15 @@ export class CatalogController {
           select: {
             id: true,
             name: true,
-            tourType: { select: { id: true, name: true, regionId: true } },
+            media: { select: { url: true, type: true } },
+            tourType: {
+              select: {
+                id: true,
+                name: true,
+                regionId: true,
+                region: { select: { id: true, name: true } },
+              },
+            },
           },
         },
       },
