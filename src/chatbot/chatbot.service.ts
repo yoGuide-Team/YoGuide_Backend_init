@@ -20,10 +20,14 @@ export class ChatbotService {
     this.ai = new GoogleGenAI({ apiKey: apiKey ?? '' });
   }
 
-  async handleUserQuery(query: string, userId?: string) {
+  async handleUserQuery(
+    query: string,
+    userId?: string,
+    history: Array<{ role?: string; content?: string }> = [],
+  ) {
     try {
       const context = await this.buildDatabaseContext(query, userId);
-      const prompt = this.buildPrompt(query, context);
+      const prompt = this.buildPrompt(query, context, history);
 
       const response = await this.ai.models.generateContent({
         model: this.model,
@@ -74,8 +78,19 @@ Style rules:
 - If answering about a location, include a brief reason why it is worth visiting.`;
   }
 
-  private buildPrompt(query: string, context: { summary: string; records: string[] }) {
-    return `User question: ${query}
+  private buildPrompt(
+    query: string,
+    context: { summary: string; records: string[] },
+    history: Array<{ role?: string; content?: string }> = [],
+  ) {
+    const conversationContext = history.length > 0
+      ? `Recent conversation:\n${history
+          .slice(-8)
+          .map((entry) => `${entry.role === 'assistant' ? 'Assistant' : 'User'}: ${entry.content ?? ''}`)
+          .join('\n')}\n\n`
+      : '';
+
+    return `${conversationContext}User question: ${query}
 
 Database context:
 ${context.summary}
@@ -87,7 +102,8 @@ Answer as yoGuide AI.
 - Be friendly, helpful, and travel-savvy.
 - Use the context for every factual statement.
 - If the context is too sparse, say so clearly and offer a nearby or related recommendation.
-- Keep the tone human and confirm when you cannot answer a specific booking or account question.`;
+- Keep the tone human and confirm when you cannot answer a specific booking or account question.
+- Do not repeat a generic greeting at the start of every new reply if the user is continuing the same conversation.`;
   }
 
   private async buildDatabaseContext(query: string, userId?: string) {

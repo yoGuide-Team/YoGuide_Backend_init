@@ -14,11 +14,20 @@ export class ChatbotController {
     const userMessage = this.getMessage(body);
 
     if (!userMessage) {
-      return { reply: 'Please provide a message.' };
+      return {
+        text: 'Please provide a message.',
+        reply: 'Please provide a message.',
+      };
     }
 
-    const result = await this.chatbotService.handleUserQuery(userMessage, body.userId);
+    const history = Array.isArray(body.history) ? body.history : [];
+    const result = await this.chatbotService.handleUserQuery(
+      userMessage,
+      body.userId,
+      history,
+    );
     return {
+      text: result.text ?? 'How can I help you today?',
       reply: result.text ?? 'How can I help you today?',
       grounded: result.grounded ?? false,
       contextSummary: result.contextSummary,
@@ -34,6 +43,12 @@ export class ChatbotController {
   @Post('chatbot/ask')
   @HttpCode(HttpStatus.OK)
   async handleChatAsk(@Body() body: ChatQueryDto) {
+    return this.buildResponse(body);
+  }
+
+  @Post('chatbot')
+  @HttpCode(HttpStatus.OK)
+  async handleChatbotAlias(@Body() body: ChatQueryDto) {
     return this.buildResponse(body);
   }
 }
