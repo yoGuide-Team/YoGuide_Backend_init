@@ -9,6 +9,7 @@ import { AdminCatalogUsersController } from './admin-catalog-users.controller';
 import { AdminCatalogReviewsController } from './admin-catalog-reviews.controller';
 import { AdminCatalogBookingsController } from './admin-catalog-bookings.controller';
 import { AdminPaymentsController } from './admin-payments.controller';
+import { AdminGastronomyCategoriesController } from './admin-gastronomy-categories.controller';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 
 @Module({
@@ -23,6 +24,7 @@ import { AdminRoleGuard } from '../guards/admin-role.guard';
     AdminCatalogReviewsController,
     AdminCatalogBookingsController,
     AdminPaymentsController,
+    AdminGastronomyCategoriesController,
   ],
   providers: [AdminRoleGuard],
 })

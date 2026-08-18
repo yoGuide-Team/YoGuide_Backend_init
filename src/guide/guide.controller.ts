@@ -61,6 +61,7 @@ const GUIDE_BOOKING_INCLUDE = {
   user: { select: { id: true, fullName: true, email: true, profileImage: true } },
   package: { select: { id: true, name: true, durationHours: true, price: true } },
   vehicle: true,
+  selectedCourses: { include: { course: true } },
   payment: true,
 } satisfies Prisma.BookingInclude;
 

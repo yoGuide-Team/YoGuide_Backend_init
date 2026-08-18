@@ -10,8 +10,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { BookingStatus, PaymentMethod, Prisma } from '@prisma/client';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
+import { BookingStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -19,20 +28,35 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 
 class CreateBookingDto {
   @IsString()
-  packageId!: string;
-
-  @IsString()
-  vehicleId!: string;
-
-  @IsString()
   guideId!: string;
 
   @IsDateString()
   scheduleDate!: string;
 
+  // ── Tour/vehicle booking fields — required together for that path ──
+  @IsOptional()
+  @IsString()
+  packageId?: string;
+
+  @IsOptional()
+  @IsString()
+  vehicleId?: string;
+
+  @IsOptional()
   @IsString()
   @MinLength(2)
-  pickupLocation!: string;
+  pickupLocation?: string;
+
+  // ── Gastronomy booking fields — presence of partySize selects this path ──
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  partySize?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  selectedCourseIds?: string[];
 
   @IsOptional()
   @IsEnum(PaymentMethod)
@@ -43,12 +67,30 @@ class CreateBookingDto {
   notes?: string;
 }
 
+class RecordPaymentDto {
+  @IsEnum(PaymentStatus)
+  status!: PaymentStatus;
+
+  @IsEnum(PaymentMethod)
+  paymentMethod!: PaymentMethod;
+
+  @IsOptional()
+  @IsString()
+  transactionRef?: string;
+}
+
 const CANCELLABLE: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
 
 const BOOKING_INCLUDE = {
   package: { select: { id: true, name: true, durationHours: true, price: true, isCustom: true } },
   vehicle: true,
-  guide: { include: { user: { select: { id: true, fullName: true, profileImage: true } } } },
+  guide: {
+    include: {
+      user: { select: { id: true, fullName: true, profileImage: true } },
+      chefProfile: true,
+    },
+  },
+  selectedCourses: { include: { course: true } },
   payment: true,
 } satisfies Prisma.BookingInclude;
 
@@ -63,11 +105,91 @@ export class BookingsController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Post('bookings')
-  @ApiOperation({ summary: 'Book a package (price computed server-side)' })
+  @ApiOperation({
+    summary: 'Book a package or a gastronomy experience (price computed server-side)',
+    description:
+      "Two mutually-exclusive shapes, selected by whether partySize is present. Tour/vehicle: " +
+      "packageId + vehicleId + pickupLocation required, no partySize. Gastronomy: partySize " +
+      'required (+ optional selectedCourseIds), no packageId/vehicleId.',
+  })
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBookingDto) {
     const scheduleDate = new Date(dto.scheduleDate);
     if (scheduleDate.getTime() <= Date.now()) {
       throw new BadRequestException('scheduleDate must be in the future.');
+    }
+
+    const guide = await this.prisma.guideProfile.findUnique({
+      where: { id: dto.guideId },
+      include: { chefProfile: { include: { priceTiers: true, courses: true } } },
+    });
+    if (!guide) throw new NotFoundException(`Guide '${dto.guideId}' not found.`);
+
+    if (dto.partySize != null) {
+      return this.createGastronomyBooking(user, dto, guide, scheduleDate);
+    }
+    return this.createTourBooking(user, dto, guide, scheduleDate);
+  }
+
+  private async createGastronomyBooking(
+    user: AuthenticatedUser,
+    dto: CreateBookingDto,
+    guide: Prisma.GuideProfileGetPayload<{
+      include: { chefProfile: { include: { priceTiers: true; courses: true } } };
+    }>,
+    scheduleDate: Date,
+  ) {
+    if (dto.packageId || dto.vehicleId) {
+      throw new BadRequestException('packageId/vehicleId are not used for gastronomy bookings.');
+    }
+    if (!guide.chefProfile) {
+      throw new BadRequestException('This guide does not offer gastronomy experiences.');
+    }
+
+    const tier = guide.chefProfile.priceTiers.find(
+      (t) =>
+        dto.partySize! >= t.minPartySize &&
+        (t.maxPartySize == null || dto.partySize! <= t.maxPartySize),
+    );
+    if (!tier) {
+      throw new BadRequestException('No pricing tier configured for this party size.');
+    }
+
+    let courseIds: string[] = [];
+    if (dto.selectedCourseIds?.length) {
+      const validIds = new Set(guide.chefProfile.courses.map((c) => c.id));
+      courseIds = dto.selectedCourseIds.filter((id) => validIds.has(id));
+      if (courseIds.length !== dto.selectedCourseIds.length) {
+        throw new BadRequestException('One or more selected courses are invalid.');
+      }
+    }
+
+    const totalDue = tier.pricePerPersonUsd.mul(dto.partySize!);
+
+    return this.prisma.booking.create({
+      data: {
+        userId: user.id,
+        guideId: guide.id,
+        scheduleDate,
+        partySize: dto.partySize,
+        totalDue,
+        paymentMethod: dto.paymentMethod,
+        notes: dto.notes,
+        selectedCourses: { create: courseIds.map((courseId) => ({ courseId })) },
+      },
+      include: BOOKING_INCLUDE,
+    });
+  }
+
+  private async createTourBooking(
+    user: AuthenticatedUser,
+    dto: CreateBookingDto,
+    guide: { id: string },
+    scheduleDate: Date,
+  ) {
+    if (!dto.packageId || !dto.vehicleId || !dto.pickupLocation) {
+      throw new BadRequestException(
+        'packageId, vehicleId and pickupLocation are required for tour bookings.',
+      );
     }
 
     const pkg = await this.prisma.package.findUnique({ where: { id: dto.packageId } });
@@ -76,8 +198,6 @@ export class BookingsController {
     }
     const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException(`Vehicle '${dto.vehicleId}' not found.`);
-    const guide = await this.prisma.guideProfile.findUnique({ where: { id: dto.guideId } });
-    if (!guide) throw new NotFoundException(`Guide '${dto.guideId}' not found.`);
 
     const totalDue = pkg.price.add(this.vehicleCost(vehicle, pkg.durationHours));
 
@@ -133,6 +253,32 @@ export class BookingsController {
       where: { id },
       data: { status: BookingStatus.CANCELLED },
       include: BOOKING_INCLUDE,
+    });
+  }
+
+  @Post('bookings/:id/payment')
+  @ApiOperation({ summary: 'Record the result of an online payment attempt for my booking' })
+  async recordPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: RecordPaymentDto,
+  ) {
+    const booking = await this.prisma.booking.findFirst({ where: { id, userId: user.id } });
+    if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
+    return this.prisma.payment.upsert({
+      where: { bookingId: id },
+      create: {
+        bookingId: id,
+        amount: booking.totalDue,
+        status: dto.status,
+        paymentMethod: dto.paymentMethod,
+        transactionRef: dto.transactionRef,
+      },
+      update: {
+        status: dto.status,
+        paymentMethod: dto.paymentMethod,
+        transactionRef: dto.transactionRef,
+      },
     });
   }
 

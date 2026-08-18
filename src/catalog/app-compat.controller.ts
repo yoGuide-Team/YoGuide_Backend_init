@@ -67,6 +67,21 @@ export class AppCompatController {
         user: { select: { fullName: true, profileImage: true } },
         reviews: { select: { starRating: true } },
         _count: { select: { bookings: true } },
+        chefProfile: {
+          include: {
+            category: true,
+            courses: {
+              orderBy: { sortOrder: 'asc' },
+              include: { media: { orderBy: { sortOrder: 'asc' } } },
+            },
+            priceTiers: { orderBy: { minPartySize: 'asc' } },
+          },
+        },
+        experiences: {
+          include: { media: { orderBy: { sortOrder: 'asc' } } },
+          orderBy: { sortOrder: 'asc' },
+        },
+        vehicles: { include: { vehicle: true } },
       },
     });
     return guides.map((g) => {
@@ -74,19 +89,13 @@ export class AppCompatController {
       const rating = ratings.length
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
         : 0;
-      // Chef extras live in GuideProfile.gastronomy (JSON). The app's
-      // gastronomy flow filters on specialties containing '#Food' and
-      // reads the chef fields directly off the guide row.
-      const gastro = (g.gastronomy ?? null) as {
-        restaurantName?: string;
-        gastronomyCategory?: string;
-        experienceName?: string;
-        gastronomyArea?: string;
-        chefTags?: string[];
-        perGuestUsd?: number;
-        menuCourses?: Array<{ course: string; description: string }>;
-        story?: { title: string; durationLabel: string; text: string };
-      } | null;
+      // Chef extras live in the related ChefProfile. The app's gastronomy
+      // flow filters on specialties containing '#Food' and reads the chef
+      // fields directly off the guide row.
+      const gastro = g.chefProfile;
+      const lowestTierUsd = gastro?.priceTiers.length
+        ? Math.min(...gastro.priceTiers.map((t) => t.pricePerPersonUsd.toNumber()))
+        : null;
       return {
         id: g.id,
         userId: g.userId,
@@ -101,19 +110,56 @@ export class AppCompatController {
         specialties: gastro ? ['#Food'] : [],
         languages: g.languages,
         bio: g.companyName ? `Guide at ${g.companyName}` : '',
-        hourlyRateCents: gastro?.perGuestUsd ? Math.round(gastro.perGuestUsd * 100) : null,
+        hourlyRateCents: lowestTierUsd != null ? Math.round(lowestTierUsd * 100) : null,
         currency: 'USD',
         isVerified: true,
         isAvailable: true,
+        // Every guide can have showcase Experiences, not just chefs — keep
+        // this outside the `gastro ? ... : {}` block below.
+        experiences: g.experiences.map((e) => ({
+          id: e.id,
+          title: e.title,
+          description: e.description,
+          media: e.media.map((m) => ({ id: m.id, url: m.url, type: m.type })),
+        })),
+        // Vehicles this guide has actually linked to their profile — used
+        // by the tour-booking flow's real vehicle picker.
+        vehicles: g.vehicles.map((v) => ({
+          id: v.vehicle.id,
+          name: v.vehicle.name,
+          icon: v.vehicle.icon,
+          seats: v.vehicle.seats,
+          pricePerHourUsd: v.vehicle.pricePerHour.toNumber(),
+          pricePerDayUsd: v.vehicle.pricePerDay.toNumber(),
+        })),
         ...(gastro
           ? {
+              chefCategoryId: gastro.categoryId,
+              chefCategoryName: gastro.category.name,
               restaurantName: gastro.restaurantName,
-              gastronomyCategory: gastro.gastronomyCategory,
               experienceName: gastro.experienceName,
-              gastronomyArea: gastro.gastronomyArea,
-              chefTags: gastro.chefTags ?? [],
-              menuCourses: gastro.menuCourses ?? [],
-              story: gastro.story,
+              gastronomyArea: gastro.area,
+              chefTags: gastro.tags,
+              introVideoUrl: gastro.introVideoUrl,
+              menuCourses: gastro.courses.map((c) => ({
+                id: c.id,
+                course: c.name,
+                description: c.description,
+                imageUrl: c.imageUrl,
+                media: c.media.map((m) => ({ id: m.id, url: m.url, type: m.type })),
+              })),
+              priceTiers: gastro.priceTiers.map((t) => ({
+                minPartySize: t.minPartySize,
+                maxPartySize: t.maxPartySize,
+                pricePerPersonUsd: t.pricePerPersonUsd.toNumber(),
+              })),
+              story: gastro.storyTitle
+                ? {
+                    title: gastro.storyTitle,
+                    durationLabel: gastro.storyDurationLabel,
+                    text: gastro.storyText,
+                  }
+                : undefined,
             }
           : {}),
       };
