@@ -200,6 +200,19 @@ export class GuideController {
     return { ok: true };
   }
 
+  // ── Reviews ────────────────────────────────────────────────
+
+  @Get('reviews')
+  @ApiOperation({ summary: 'List reviews left on my guide profile' })
+  async listReviews(@CurrentUser() user: AuthenticatedUser) {
+    const profile = await this.requireProfile(user);
+    return this.prisma.review.findMany({
+      where: { guideId: profile.id },
+      orderBy: { createdAt: 'desc' },
+      include: { user: { select: { id: true, fullName: true } } },
+    });
+  }
+
   // ── Helpers ────────────────────────────────────────────────
 
   private async requireProfile(user: AuthenticatedUser) {

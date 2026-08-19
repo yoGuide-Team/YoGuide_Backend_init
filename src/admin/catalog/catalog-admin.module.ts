@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminStatsController } from './admin-stats.controller';
 import { AdminRegionsController } from './admin-regions.controller';
 import { AdminTourTypesController } from './admin-tour-types.controller';
 import { AdminPackagesController } from './admin-packages.controller';
@@ -14,6 +15,7 @@ import { AdminRoleGuard } from '../guards/admin-role.guard';
 
 @Module({
   controllers: [
+    AdminStatsController,
     AdminRegionsController,
     AdminTourTypesController,
     AdminPackagesController,

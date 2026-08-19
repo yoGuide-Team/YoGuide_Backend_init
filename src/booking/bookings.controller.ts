@@ -17,6 +17,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   Min,
   MinLength,
 } from 'class-validator';
@@ -79,6 +80,17 @@ class RecordPaymentDto {
   transactionRef?: string;
 }
 
+class CreateReviewDto {
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  starRating!: number;
+
+  @IsOptional()
+  @IsString()
+  message?: string;
+}
+
 const CANCELLABLE: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
 
 const BOOKING_INCLUDE = {
@@ -92,6 +104,7 @@ const BOOKING_INCLUDE = {
   },
   selectedCourses: { include: { course: true } },
   payment: true,
+  review: true,
 } satisfies Prisma.BookingInclude;
 
 /// Tourist-facing bookings. Every record is linked to the authenticated
@@ -278,6 +291,32 @@ export class BookingsController {
         status: dto.status,
         paymentMethod: dto.paymentMethod,
         transactionRef: dto.transactionRef,
+      },
+    });
+  }
+
+  @Post('bookings/:id/review')
+  @ApiOperation({ summary: 'Leave a review for one of my completed bookings' })
+  async createReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateReviewDto,
+  ) {
+    const booking = await this.prisma.booking.findFirst({ where: { id, userId: user.id } });
+    if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
+    if (booking.status !== BookingStatus.COMPLETED) {
+      throw new BadRequestException('You can only review a completed booking.');
+    }
+    const existing = await this.prisma.review.findUnique({ where: { bookingId: id } });
+    if (existing) throw new BadRequestException('You already reviewed this booking.');
+    return this.prisma.review.create({
+      data: {
+        bookingId: id,
+        userId: user.id,
+        guideId: booking.guideId,
+        packageId: booking.packageId,
+        starRating: dto.starRating,
+        message: dto.message,
       },
     });
   }

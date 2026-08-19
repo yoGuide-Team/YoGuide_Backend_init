@@ -336,6 +336,11 @@ model Review {
   guide      GuideProfile? @relation(fields: [guideId], references: [id])
   packageId  String?
   package    Package?      @relation(fields: [packageId], references: [id])
+  /// Links this review to the completed booking it was left for — nullable
+  /// since older admin-created reviews predate this field. Unique so a
+  /// booking can only ever have one review.
+  bookingId  String?       @unique
+  booking    Booking?      @relation(fields: [bookingId], references: [id])
   message    String?
   starRating Int
   createdAt  DateTime      @default(now())
@@ -343,6 +348,7 @@ model Review {
   @@index([userId])
   @@index([guideId])
   @@index([packageId])
+  @@index([bookingId])
 }
 
 model Booking {
@@ -365,6 +371,7 @@ model Booking {
   paymentMethod   PaymentMethod?
   notes           String?
   payment         Payment?
+  review          Review?
   walletEntries   WalletTransaction[]
   createdAt       DateTime            @default(now())
 

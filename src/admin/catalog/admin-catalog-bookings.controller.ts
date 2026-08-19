@@ -95,6 +95,7 @@ export class AdminCatalogBookingsController {
         scheduleDate: dto.scheduleDate ? new Date(dto.scheduleDate) : undefined,
         pickupLocation: dto.pickupLocation,
         totalDue: dto.totalDue,
+        status: dto.status,
       },
     });
   }

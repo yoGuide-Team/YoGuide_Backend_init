@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import { BookingStatus } from '@prisma/client';
 
 export class BookingBodyDto {
   @ApiProperty({ description: 'User id (UUID)' })
@@ -50,4 +51,9 @@ export class UpdateBookingDto {
   @IsNumber()
   @Min(0)
   totalDue?: number;
+
+  @ApiPropertyOptional({ enum: BookingStatus, enumName: 'BookingStatus' })
+  @IsOptional()
+  @IsEnum(BookingStatus)
+  status?: BookingStatus;
 }
