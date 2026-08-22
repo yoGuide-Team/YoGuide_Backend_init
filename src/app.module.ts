@@ -11,6 +11,7 @@ import { CatalogAdminModule } from './admin/catalog/catalog-admin.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { BookingModule } from './booking/booking.module';
 import { GuideModule } from './guide/guide.module';
+import { HotelModule } from './hotel/hotel.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { GuideModule } from './guide/guide.module';
     CatalogModule,
     BookingModule,
     GuideModule,
+    HotelModule,
   ],
 })
 export class AppModule {}

@@ -101,7 +101,87 @@ async function main() {
     guideProfileId = profile?.id;
   }
 
-  // 4. Catalog reference data — region/tour type/package, gastronomy
+  // 4. Create a hotel manager user with hotel and rooms
+  console.log('🏨 Creating hotel manager user...');
+  const hotelManagerEmail = 'hotelmanager@yoguide.app';
+  const existingHotelManager = await prisma.user.findUnique({
+    where: { email: hotelManagerEmail },
+  });
+
+  if (!existingHotelManager) {
+    const bcrypt = require('bcryptjs');
+    const password = await bcrypt.hash('HotelManager@123', 10);
+
+    const hotelManagerUser = await prisma.user.create({
+      data: {
+        fullName: 'Hotel Manager',
+        email: hotelManagerEmail,
+        password: password,
+        nationality: 'Rwandan',
+        role: 'HOTEL_MANAGER',
+        emailVerified: true,
+        inAppNotifications: true,
+        emailNotifications: true,
+      },
+    });
+
+    // Create hotel
+    const existingHotel = await prisma.hotel.findFirst({
+      where: { managerId: hotelManagerUser.id },
+    });
+    if (!existingHotel) {
+      const hotel = await prisma.hotel.create({
+        data: {
+          managerId: hotelManagerUser.id,
+          name: 'Kigali Serena Hotel',
+          description: 'Luxury hotel in the heart of Kigali with stunning views and world-class amenities.',
+          city: 'Kigali',
+          address: 'Kn 5 Ave, Kigali',
+          amenities: ['WiFi', 'Pool', 'Spa', 'Restaurant', 'Gym', 'Conference Room'],
+          checkInTime: '14:00',
+          checkOutTime: '12:00',
+          contact: 'reservations@serena.co.rw',
+          phone: '+250 888 888 888',
+          website: 'https://www.serenahotels.com/kigali',
+          isVerified: true,
+        },
+      });
+
+      // Create sample rooms
+      await prisma.hotelRoom.createMany({
+        data: [
+          {
+            hotelId: hotel.id,
+            name: 'Standard Room',
+            totalRooms: 20,
+            nightlyRateCents: 15000,
+            currency: 'USD',
+            amenities: ['WiFi', 'TV', 'Air Conditioning'],
+          },
+          {
+            hotelId: hotel.id,
+            name: 'Deluxe Room',
+            totalRooms: 10,
+            nightlyRateCents: 25000,
+            currency: 'USD',
+            amenities: ['WiFi', 'TV', 'Air Conditioning', 'Mini Bar', 'Balcony'],
+          },
+          {
+            hotelId: hotel.id,
+            name: 'Suite',
+            totalRooms: 5,
+            nightlyRateCents: 45000,
+            currency: 'USD',
+            amenities: ['WiFi', 'TV', 'Air Conditioning', 'Mini Bar', 'Balcony', 'Living Room', 'Jacuzzi'],
+          },
+        ],
+      });
+      console.log('✅ Hotel and rooms created');
+    }
+    console.log('✅ Hotel manager user created');
+  }
+
+  // 5. Catalog reference data — region/tour type/package, gastronomy
   //    category, and the sample guide's chef profile/courses/price tiers
   //    and vehicles. Prices are intentionally tiny (not realistic $ amounts)
   //    so real-payment testing stays cheap on every environment this seed
@@ -247,6 +327,9 @@ async function main() {
   console.log('📋 Tourist credentials:');
   console.log('   Email: tourist@yoguide.app');
   console.log('   Password: Tourist@123');
+  console.log('📋 Hotel Manager credentials:');
+  console.log('   Email: hotelmanager@yoguide.app');
+  console.log('   Password: HotelManager@123');
 }
 
 main()

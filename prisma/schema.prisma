@@ -13,6 +13,7 @@ enum UserRole {
   ADMIN
   TOURIST
   GUIDE
+  HOTEL_MANAGER
 }
 
 enum VisitorType {
@@ -86,6 +87,7 @@ model User {
   currentRegion          Region?             @relation(fields: [currentRegionId], references: [id])
   trips                  Trip[]
   guideProfile           GuideProfile?
+  hotel                  Hotel?
   reviews                Review[]
   bookings               Booking[]
   customPackages         Package[]           @relation("UserCustomPackages")
@@ -359,8 +361,10 @@ model Booking {
   package         Package?            @relation(fields: [packageId], references: [id])
   vehicleId       String?
   vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
-  guideId         String
-  guide           GuideProfile        @relation(fields: [guideId], references: [id])
+  guideId         String?
+  guide           GuideProfile?       @relation(fields: [guideId], references: [id])
+  hotelId         String?
+  hotel           Hotel?               @relation(fields: [hotelId], references: [id])
   scheduleDate    DateTime
   pickupLocation  String?
   /// Gastronomy-only: number of diners. Null for tour/vehicle bookings.
@@ -430,6 +434,44 @@ model WalletTransaction {
   @@index([walletId])
   @@index([bookingId])
   @@index([userId])
+}
+
+model Hotel {
+  id           String       @id @default(uuid())
+  managerId    String       @unique
+  manager      User         @relation(fields: [managerId], references: [id])
+  name         String
+  description  String?
+  city         String?
+  address      String?
+  amenities    String[]     @default([])
+  checkInTime  String?
+  checkOutTime String?
+  contact      String?
+  phone        String?
+  website      String?
+  isVerified   Boolean      @default(false)
+  rooms        HotelRoom[]
+  bookings     Booking[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([managerId])
+}
+
+model HotelRoom {
+  id           String  @id @default(uuid())
+  hotelId      String
+  hotel        Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  name         String
+  totalRooms   Int     @default(0)
+  nightlyRateCents Int @default(0)
+  currency     String  @default("USD")
+  amenities    String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([hotelId])
 }
 
 model Payment {

@@ -20,12 +20,13 @@ services:
     build: .
     restart: unless-stopped
     container_name: yoguide-app
-    network_mode: host
+    ports:
+      - "3031:3031"
     environment:
       - NODE_ENV=production
       - PORT=3031  # Changed from 3030 to 3031
-      - DATABASE_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
-      - DIRECT_URL=postgresql://yoguide:yoguide@localhost:5432/yoguide?schema=public
+      - DATABASE_URL=postgresql://yoguide:yoguide@host.docker.internal:5433/yoguide?schema=public
+      - DIRECT_URL=postgresql://yoguide:yoguide@host.docker.internal:5433/yoguide?schema=public
       - JWT_SECRET=change-me-to-a-long-random-string
       - JWT_EXPIRES_IN=30d
       - GOOGLE_CLIENT_ID=144840489403-kkh8tc7ral09rmeqevec56cf4m361t7p.apps.googleusercontent.com

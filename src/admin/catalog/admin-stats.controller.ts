@@ -139,7 +139,7 @@ export class AdminStatsController {
         totalDue: b.totalDue.toNumber(),
         userFullName: b.user.fullName,
         packageName: b.package?.name ?? null,
-        guideFullName: b.guide.user.fullName,
+        guideFullName: b.guide?.user?.fullName ?? null,
       })),
     };
   }
