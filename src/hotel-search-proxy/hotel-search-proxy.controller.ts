@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('hotels')
 @Controller('proxy')
-export class HotelsController {
+export class HotelSearchProxyController {
   @Get('search')
   @ApiOperation({ summary: 'Proxy hotel search via SerpAPI (avoids CORS)' })
   @ApiQuery({ name: 'q', required: true, description: 'Search query' })
