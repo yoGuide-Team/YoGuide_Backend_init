@@ -8,13 +8,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { RegionBodyDto } from './dto/admin-regions.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Regions')
 @ApiBearerAuth('access-token')
@@ -25,9 +27,11 @@ export class AdminRegionsController {
 
   @Get()
   @ApiOperation({ summary: 'List all regions' })
-  list() {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'name' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(@Query('sortBy') sortBy?: string, @Query('sortDir') sortDir?: string) {
     return this.prisma.region.findMany({
-      orderBy: { name: 'asc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['name'] as const, { name: 'asc' }),
       include: { _count: { select: { tourTypes: true, users: true } } },
     });
   }

@@ -8,13 +8,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { GastronomyCategoryBodyDto, UpdateGastronomyCategoryDto } from './dto/admin-gastronomy-categories.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Gastronomy Categories')
 @ApiBearerAuth('access-token')
@@ -25,9 +27,11 @@ export class AdminGastronomyCategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'List gastronomy categories' })
-  list() {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'sortOrder | name' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(@Query('sortBy') sortBy?: string, @Query('sortDir') sortDir?: string) {
     return this.prisma.gastronomyCategory.findMany({
-      orderBy: { sortOrder: 'asc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['sortOrder', 'name'] as const, { sortOrder: 'asc' }),
       include: { _count: { select: { chefs: true } } },
     });
   }

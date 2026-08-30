@@ -18,6 +18,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { CreateUserDto, UpdateUserDto } from './dto/admin-catalog-users.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Users')
 @ApiBearerAuth('access-token')
@@ -29,10 +30,21 @@ export class AdminCatalogUsersController {
   @Get()
   @ApiOperation({ summary: 'List users' })
   @ApiQuery({ name: 'role', required: false, enum: UserRole, enumName: 'UserRole' })
-  list(@Query('role') role?: UserRole) {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'fullName | email | createdAt | updatedAt | role' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(
+    @Query('role') role?: UserRole,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
     return this.prisma.user.findMany({
       where: role ? { role } : undefined,
-      orderBy: { createdAt: 'desc' },
+      orderBy: parseAdminSort(
+        sortBy,
+        sortDir,
+        ['fullName', 'email', 'createdAt', 'updatedAt', 'role'] as const,
+        { createdAt: 'desc' },
+      ),
       select: {
         id: true,
         fullName: true,

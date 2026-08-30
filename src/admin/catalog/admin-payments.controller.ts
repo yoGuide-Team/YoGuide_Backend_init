@@ -17,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { PaymentBodyDto, UpdatePaymentDto } from './dto/admin-payments.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Payments')
 @ApiBearerAuth('access-token')
@@ -29,13 +30,20 @@ export class AdminPaymentsController {
   @ApiOperation({ summary: 'List payments' })
   @ApiQuery({ name: 'status', required: false, enum: PaymentStatus, enumName: 'PaymentStatus' })
   @ApiQuery({ name: 'bookingId', required: false, description: 'Filter by booking id (UUID)' })
-  list(@Query('status') status?: PaymentStatus, @Query('bookingId') bookingId?: string) {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'createdAt | amount' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(
+    @Query('status') status?: PaymentStatus,
+    @Query('bookingId') bookingId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
     return this.prisma.payment.findMany({
       where: {
         status: status || undefined,
         bookingId: bookingId || undefined,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['createdAt', 'amount'] as const, { createdAt: 'desc' }),
       include: {
         booking: {
           include: {

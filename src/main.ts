@@ -1,7 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
+import { mkdirSync } from 'fs';
 import { AppModule } from './app.module';
+import { UPLOADS_ROOT } from './files/files.service';
 import { GlobalHttpExceptionFilter } from './common/http-exception.filter';
 import { UserProfileResponse, RegisterPendingResponse } from './auth/dto';
 import { TripResponse } from './me/trips.dto';
@@ -20,7 +24,19 @@ import {
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  // bodyParser disabled globally so /files/upload/:token can register a raw
+  // (non-JSON) body parser ahead of the general json/urlencoded ones below —
+  // Express middleware order matters, and the default Nest body parser has
+  // no path restriction, so it would otherwise consume every request first.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+
+  mkdirSync(UPLOADS_ROOT, { recursive: true });
+  app.use('/files/upload', express.raw({ limit: '16mb', type: () => true }));
+  app.use(express.json({ limit: '5mb' }));
+  app.use(express.urlencoded({ extended: true }));
+  app.useStaticAssets(UPLOADS_ROOT, { prefix: '/uploads/' });
 
   app.enableCors({
     origin: true,
@@ -31,7 +47,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
-  app.getHttpAdapter().get('/', (req, res) => {
+  app.getHttpAdapter().get('/', (req: express.Request, res: express.Response) => {
     res.status(200).json({
       status: 'ok',
       service: 'yoGuide backend',

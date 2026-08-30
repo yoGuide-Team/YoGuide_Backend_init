@@ -5,6 +5,7 @@ import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
 import { MeModule } from './me/me.module';
 import { HealthModule } from './health/health.module';
+import { FilesModule } from './files/files.module';
 import { WalletModule } from './wallet/wallet.module';
 import { AdminModule } from './admin/admin.module';
 import { CatalogAdminModule } from './admin/catalog/catalog-admin.module';
@@ -13,6 +14,14 @@ import { BookingModule } from './booking/booking.module';
 import { GuideModule } from './guide/guide.module';
 import { HotelModule } from './hotel/hotel.module';
 import { HotelSearchProxyModule } from './hotel-search-proxy/hotel-search-proxy.module';
+import { MessagesModule } from './messages/messages.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { ItinerariesModule } from './itineraries/itineraries.module';
+import { CitiesModule } from './cities/cities.module';
+import { EsimModule } from './esim/esim.module';
+import { PaymentsModule } from './payments/payments.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -22,6 +31,7 @@ import { HotelSearchProxyModule } from './hotel-search-proxy/hotel-search-proxy.
     AuthModule,
     MeModule,
     HealthModule,
+    FilesModule,
     WalletModule,
     AdminModule,
     CatalogAdminModule,
@@ -30,6 +40,14 @@ import { HotelSearchProxyModule } from './hotel-search-proxy/hotel-search-proxy.
     GuideModule,
     HotelModule,
     HotelSearchProxyModule,
+    MessagesModule,
+    NotificationsModule,
+    ItinerariesModule,
+    CitiesModule,
+    EsimModule,
+    PaymentsModule,
+    ChatbotModule,
+    RecommendationsModule,
   ],
 })
 export class AppModule {}

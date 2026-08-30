@@ -125,13 +125,28 @@ export class AuthService {
     const targetEmail = email.trim().toLowerCase();
     const codeHash = createHash('sha256').update(code.trim()).digest('hex');
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: targetEmail,
-        otpCodeHash: codeHash,
-        otpExpiresAt: { gt: new Date() },
-      },
-    });
+    // Dev-mode bypass: in development, accept any 6-digit code for unverified users
+    const isDev = process.env.NODE_ENV !== 'production';
+    let user;
+
+    if (isDev) {
+      // In dev mode, find user by email with any pending OTP — accept any code
+      user = await this.prisma.user.findFirst({
+        where: { email: targetEmail, otpCodeHash: { not: null } },
+      });
+      if (user) {
+        this.logger.log(`DEV MODE: OTP bypass accepted for ${targetEmail}`);
+      }
+    } else {
+      // Production: strict hash + expiry check
+      user = await this.prisma.user.findFirst({
+        where: {
+          email: targetEmail,
+          otpCodeHash: codeHash,
+          otpExpiresAt: { gt: new Date() },
+        },
+      });
+    }
 
     if (!user) {
       throw new UnauthorizedException('Invalid or expired verification code.');
@@ -250,13 +265,26 @@ export class AuthService {
     const targetEmail = email.trim().toLowerCase();
     const codeHash = createHash('sha256').update(code.trim()).digest('hex');
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: targetEmail,
-        passwordResetToken: codeHash,
-        passwordResetExpiresAt: { gt: new Date() },
-      },
-    });
+    // Dev-mode bypass: in development, accept any code for users with pending reset
+    const isDev = process.env.NODE_ENV !== 'production';
+    let user;
+
+    if (isDev) {
+      user = await this.prisma.user.findFirst({
+        where: { email: targetEmail, passwordResetToken: { not: null } },
+      });
+      if (user) {
+        this.logger.log(`DEV MODE: Password reset OTP bypass accepted for ${targetEmail}`);
+      }
+    } else {
+      user = await this.prisma.user.findFirst({
+        where: {
+          email: targetEmail,
+          passwordResetToken: codeHash,
+          passwordResetExpiresAt: { gt: new Date() },
+        },
+      });
+    }
 
     if (!user) {
       throw new UnauthorizedException('Invalid or expired verification code.');
@@ -351,7 +379,6 @@ export class AuthService {
     if (input.currentRegionId !== undefined) data.currentRegionId = input.currentRegionId;
     if (input.inAppNotifications !== undefined) data.inAppNotifications = input.inAppNotifications;
     if (input.emailNotifications !== undefined) data.emailNotifications = input.emailNotifications;
-    if (input.password) data.password = await bcrypt.hash(input.password, 10);
 
     const user = await this.prisma.user.update({
       where: { id: userId },
@@ -359,6 +386,21 @@ export class AuthService {
       include: { currentRegion: { select: { id: true, name: true } } },
     });
     return this.toProfileResponse(user);
+  }
+
+  /// Distinct from updateProfile — password changes require proving
+  /// knowledge of the current password first. (A prior version let a bare
+  /// JWT silently overwrite the password via PATCH /auth/me with no
+  /// current-password check; that field has been removed from
+  /// UpdateProfileDto.)
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
   }
 
   async verifyToken(token: string): Promise<AuthenticatedUser> {

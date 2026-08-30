@@ -28,6 +28,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { HotelRoleGuard } from './hotel-role.guard';
+import { generateShortCode } from '../common/short-code';
 
 // ── DTOs ────────────────────────────────────────────────────────────────────
 
@@ -197,12 +198,22 @@ export class HotelController {
         contact: dto.contact,
         phone: dto.phone,
         website: dto.website,
+        code: await this.uniqueHotelCode(),
       },
       include: {
         rooms: true,
         _count: { select: { bookings: true } },
       },
     });
+  }
+
+  private async uniqueHotelCode(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const code = generateShortCode();
+      const clash = await this.prisma.hotel.findUnique({ where: { code } });
+      if (!clash) return code;
+    }
+    throw new Error('Could not generate a unique hotel code.');
   }
 
   @Patch('profile')

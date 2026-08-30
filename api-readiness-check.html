@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>YoGuide API Readiness — Live Check</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #EEF1F1; --surface: #FFFFFF; --surface-2: #E4E8E8; --border: #CBD3D3;
+    --text: #16211F; --text-2: #4C5B58; --text-3: #798886; --accent: #0F7C6E;
+    --ok: #24824A; --ok-bg: #E1F1E6; --missing: #B5342A; --missing-bg: #FBE7E4;
+    --auth: #9A6A0A; --auth-bg: #F6EBD4; --skip: #6A4EA8; --skip-bg: #ECE6F7;
+    --pend: #798886; --pend-bg: #E4E8E8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101614; --surface: #171F1D; --surface-2: #1F2926; --border: #2C3835;
+      --text: #EAF0EE; --text-2: #AEBCB8; --text-3: #7D8C89; --accent: #3FBBA8;
+      --ok: #63C98A; --ok-bg: #1A3324; --missing: #F0857A; --missing-bg: #3B211E;
+      --auth: #E3B25A; --auth-bg: #3A2E14; --skip: #B9A2E8; --skip-bg: #2C2440;
+      --pend: #7D8C89; --pend-bg: #1F2926;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 15px; line-height: 1.5; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1 { font-size: 26px; font-weight: 700; margin: 6px 0 8px; }
+  .lede { color: var(--text-2); max-width: 68ch; font-size: 14.5px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 20px 0; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { font-size: 12.5px; color: var(--text-2); font-weight: 500; }
+  input[type=text], input[type=password] {
+    font-family: "IBM Plex Mono", monospace; font-size: 13px; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);
+    flex: 1; min-width: 200px;
+  }
+  button {
+    font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 13.5px;
+    background: var(--accent); color: var(--surface); border: none; border-radius: 7px;
+    padding: 9px 16px; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: var(--surface-2); color: var(--text); }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 20px 0; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .stat .n { font-family: "IBM Plex Mono", monospace; font-size: 22px; font-weight: 600; }
+  .stat .l { font-size: 11.5px; color: var(--text-2); margin-top: 4px; }
+  .stat.ok .n { color: var(--ok); } .stat.missing .n { color: var(--missing); }
+  .stat.auth .n { color: var(--auth); } .stat.pend .n { color: var(--pend); }
+  h2 { font-size: 15px; font-weight: 600; margin: 28px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); padding: 0 10px 6px; white-space: nowrap; }
+  td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+  td.path { font-family: "IBM Plex Mono", monospace; }
+  td.method { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 11.5px; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 5px; font-family: "IBM Plex Mono", monospace;
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  }
+  .status-pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .status-pill.missing { background: var(--missing-bg); color: var(--missing); }
+  .status-pill.auth { background: var(--auth-bg); color: var(--auth); }
+  .status-pill.pend { background: var(--pend-bg); color: var(--pend); }
+  .status-pill.err { background: var(--skip-bg); color: var(--skip); }
+  .note { font-size: 12px; color: var(--text-3); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Live check &middot; run against your own backend</div>
+  <h1>YoGuide API Readiness</h1>
+  <p class="lede">Open this file directly in a browser (double-click, or <span class="mono">file://</span>) while your backend is running. It sends real read-only <span class="mono">GET</span> requests — nothing here creates, edits, or deletes data.</p>
+
+  <div class="panel">
+    <div class="row">
+      <label for="baseUrl">Base URL</label>
+      <input type="text" id="baseUrl" value="http://localhost:3030">
+      <label for="token">Bearer token (optional)</label>
+      <input type="password" id="token" placeholder="paste a JWT to test auth-gated routes">
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button id="runBtn">Run check</button>
+      <button class="secondary" id="clearBtn">Clear results</button>
+      <span class="note" id="statusLine">not run yet</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat pend"><div class="n mono" id="statPend">—</div><div class="l">pending</div></div>
+    <div class="stat ok"><div class="n mono" id="statOk">0</div><div class="l">ok</div></div>
+    <div class="stat auth"><div class="n mono" id="statAuth">0</div><div class="l">exists, needs auth</div></div>
+    <div class="stat missing"><div class="n mono" id="statMissing">0</div><div class="l">404 / missing</div></div>
+    <div class="stat"><div class="n mono" id="statErr">0</div><div class="l">unreachable / error</div></div>
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--ok)"></span>200–299 responded</span>
+    <span><span class="dot" style="background:var(--auth)"></span>401/403 — route exists, needs a valid token</span>
+    <span><span class="dot" style="background:var(--missing)"></span>404 — not implemented</span>
+    <span><span class="dot" style="background:var(--skip)"></span>network error / CORS / backend not running</span>
+  </div>
+
+  <h2>Backend routes (public + auth-gated GETs, safe to poll)</h2>
+  <div class="table-scroll"><table id="tblKnown"><thead><tr><th>Method</th><th>Path</th><th>Feature</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Known frontend gaps (expected to 404 until built)</h2>
+  <div class="table-scroll"><table id="tblGaps"><thead><tr><th>Method</th><th>Path</th><th>Called by</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+
+</div>
+
+<script>
+const KNOWN = [
+  ["GET", "/health", "Health check"],
+  ["GET", "/catalog/regions", "Catalog: regions"],
+  ["GET", "/catalog/languages", "Catalog: languages"],
+  ["GET", "/catalog/visitor-types", "Catalog: visitor types"],
+  ["GET", "/catalog/tour-types", "Catalog: tour types"],
+  ["GET", "/catalog/packages", "Catalog: packages"],
+  ["GET", "/catalog/tours", "Catalog: tours"],
+  ["GET", "/catalog/vehicles", "Catalog: vehicles"],
+  ["GET", "/catalog/guides", "Catalog: guides list"],
+  ["GET", "/catalog/gastronomy/categories", "Gastronomy: categories"],
+  ["GET", "/catalog/gastronomy/chefs", "Gastronomy: chefs"],
+  ["GET", "/tours", "App-compat: tours"],
+  ["GET", "/guides", "App-compat: guides"],
+  ["GET", "/hotels", "Hotels: public list"],
+  ["GET", "/me", "Me (jwt)"],
+  ["GET", "/me/trips", "Me: trips (jwt)"],
+  ["GET", "/wallet", "Wallet (jwt)"],
+  ["GET", "/bookings", "Bookings (jwt)"],
+  ["GET", "/me/bookings", "Me: bookings (jwt)"],
+  ["GET", "/me/packages", "Me: custom packages (jwt)"],
+  ["GET", "/messages/threads", "Messages: threads (jwt)"],
+  ["GET", "/guide/profile", "Guide self-service (jwt+guide)"],
+  ["GET", "/hotel/profile", "Hotel self-service (jwt+hotel)"],
+  ["GET", "/admin/stats", "Admin: stats (jwt+admin)"],
+];
+
+const GAPS = [
+  ["GET", "/me/identity-verification", "Flutter + Web"],
+  ["GET", "/notifications", "Flutter"],
+  ["GET", "/payments", "Flutter"],
+  ["GET", "/payments/provider", "Flutter"],
+  ["GET", "/cards/my", "Flutter"],
+  ["GET", "/guides/test-id", "Flutter + Web (wrong path — real one is /catalog/guides/:id)"],
+  ["GET", "/vendors?category=hotel", "Web"],
+  ["GET", "/vendors/me", "Web"],
+  ["GET", "/itineraries", "Web"],
+  ["GET", "/cities/test-slug/events", "Web"],
+  ["GET", "/marketplace/products", "Web (likely dead code)"],
+];
+
+function pillFor(status, note) {
+  if (status === null) return '<span class="status-pill err">' + note + '</span>';
+  if (status >= 200 && status < 300) return '<span class="status-pill ok">' + status + '</span>';
+  if (status === 401 || status === 403) return '<span class="status-pill auth">' + status + ' auth</span>';
+  if (status === 404) return '<span class="status-pill missing">404</span>';
+  return '<span class="status-pill pend">' + status + '</span>';
+}
+
+function methodClass(m) {
+  return m.toLowerCase();
+}
+
+function buildRows(tbodyId, list) {
+  const tbody = document.querySelector(tbodyId + ' tbody');
+  tbody.innerHTML = list.map((r, i) => {
+    return '<tr data-idx="' + i + '"><td class="method">' + r[0] + '</td><td class="path">' + r[1] +
+      '</td><td>' + r[2] + '</td><td class="result"><span class="status-pill pend">pending</span></td></tr>';
+  }).join('');
+}
+
+buildRows('#tblKnown', KNOWN);
+buildRows('#tblGaps', GAPS);
+
+let counts = { ok: 0, auth: 0, missing: 0, err: 0, pend: 0 };
+
+function updateStats() {
+  document.getElementById('statOk').textContent = counts.ok;
+  document.getElementById('statAuth').textContent = counts.auth;
+  document.getElementById('statMissing').textContent = counts.missing;
+  document.getElementById('statErr').textContent = counts.err;
+  document.getElementById('statPend').textContent = counts.pend;
+}
+
+async function checkOne(base, token, method, path) {
+  const headers = {};
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  try {
+    const res = await fetch(base + path, { method, headers });
+    return { status: res.status, note: null };
+  } catch (e) {
+    return { status: null, note: 'unreachable' };
+  }
+}
+
+async function runAll() {
+  const base = document.getElementById('baseUrl').value.replace(/\/$/, '');
+  const token = document.getElementById('token').value.trim();
+  const runBtn = document.getElementById('runBtn');
+  const statusLine = document.getElementById('statusLine');
+  runBtn.disabled = true;
+
+  counts = { ok: 0, auth: 0, missing: 0, err: 0, pend: KNOWN.length + GAPS.length };
+  updateStats();
+
+  const all = [
+    ...KNOWN.map((r, i) => ({ sel: '#tblKnown tr[data-idx="' + i + '"]', r })),
+    ...GAPS.map((r, i) => ({ sel: '#tblGaps tr[data-idx="' + i + '"]', r })),
+  ];
+
+  for (const item of all) {
+    statusLine.textContent = 'checking ' + item.r[1] + ' …';
+    const result = await checkOne(base, token, item.r[0], item.r[1]);
+    counts.pend--;
+    if (result.status === null) counts.err++;
+    else if (result.status >= 200 && result.status < 300) counts.ok++;
+    else if (result.status === 401 || result.status === 403) counts.auth++;
+    else if (result.status === 404) counts.missing++;
+    else counts.pend++, counts.pend--; // other codes fall into ok-ish bucket, leave as pill only
+    updateStats();
+    const cell = document.querySelector(item.sel + ' .result');
+    if (cell) cell.innerHTML = pillFor(result.status, result.note);
+  }
+  statusLine.textContent = 'done — ' + new Date().toLocaleTimeString();
+  runBtn.disabled = false;
+}
+
+document.getElementById('runBtn').addEventListener('click', runAll);
+document.getElementById('clearBtn').addEventListener('click', () => {
+  buildRows('#tblKnown', KNOWN);
+  buildRows('#tblGaps', GAPS);
+  counts = { ok: 0, auth: 0, missing: 0, err: 0, pend: 0 };
+  updateStats();
+  document.getElementById('statusLine').textContent = 'not run yet';
+});
+</script>
+</body>
+</html>

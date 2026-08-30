@@ -8,7 +8,7 @@ import {
   IsString,
   MinLength,
 } from 'class-validator';
-import { Language, UserRole, VisitorType } from '@prisma/client';
+import { IdentityStatus, Language, UserRole, VisitorType } from '@prisma/client';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'Jane Tourist', minLength: 2 })
@@ -151,4 +151,18 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   emailNotifications?: boolean;
+
+  @ApiPropertyOptional({
+    enum: IdentityStatus,
+    enumName: 'IdentityStatus',
+    description: 'Move a pending KYC submission to APPROVED/REJECTED.',
+  })
+  @IsOptional()
+  @IsEnum(IdentityStatus)
+  identityStatus?: IdentityStatus;
+
+  @ApiPropertyOptional({ description: 'Shown to the user when identityStatus is REJECTED.' })
+  @IsOptional()
+  @IsString()
+  identityRejectionReason?: string;
 }

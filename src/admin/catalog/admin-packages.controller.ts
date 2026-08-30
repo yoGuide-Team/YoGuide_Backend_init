@@ -21,6 +21,7 @@ import {
   PackageTourBodyDto,
   UpdatePackageDto,
 } from './dto/admin-packages.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Packages')
 @ApiBearerAuth('access-token')
@@ -32,10 +33,21 @@ export class AdminPackagesController {
   @Get()
   @ApiOperation({ summary: 'List packages' })
   @ApiQuery({ name: 'tourTypeId', required: false, description: 'Filter by tour type id (UUID)' })
-  list(@Query('tourTypeId') tourTypeId?: string) {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'createdAt | name | price | durationHours' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(
+    @Query('tourTypeId') tourTypeId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
     return this.prisma.package.findMany({
       where: tourTypeId ? { tourTypeId } : undefined,
-      orderBy: { createdAt: 'desc' },
+      orderBy: parseAdminSort(
+        sortBy,
+        sortDir,
+        ['createdAt', 'name', 'price', 'durationHours'] as const,
+        { createdAt: 'desc' },
+      ),
       include: {
         tourType: {
           select: { id: true, name: true, region: { select: { id: true, name: true } } },

@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
+  ChangePasswordDto,
   ForgotPasswordDto,
   GoogleLoginDto,
   LoginDto,
@@ -150,6 +151,19 @@ export class AuthController {
   @Post('logout')
   @ApiOperation({ summary: 'Logout (client-side token discard)' })
   logout() {
+    return { ok: true };
+  }
+
+  @Patch('me/password')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Change my password',
+    description: 'Requires the current password — distinct from the forgot-password OTP flow, which resets it without one.',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorResponse })
+  async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangePasswordDto) {
+    await this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword);
     return { ok: true };
   }
 

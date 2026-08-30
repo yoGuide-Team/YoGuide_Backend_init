@@ -102,6 +102,7 @@ const BOOKING_INCLUDE = {
       chefProfile: true,
     },
   },
+  hotel: { select: { id: true, name: true, address: true, city: true } },
   selectedCourses: { include: { course: true } },
   payment: true,
   review: true,

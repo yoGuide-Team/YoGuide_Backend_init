@@ -1,5 +1,5 @@
 import { Controller, Get, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 
 /// Flat `/tours` and `/guides` endpoints in the exact JSON shape the
@@ -61,7 +61,12 @@ export class AppCompatController {
 
   @Get('guides')
   @ApiOperation({ summary: 'Guide profiles in the mobile app guide-list shape' })
-  async listGuides() {
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    description: 'rating | tours_completed | response_rate | price_asc | price_desc',
+  })
+  async listGuides(@Query('sort') sort?: string) {
     const guides = await this.prisma.guideProfile.findMany({
       include: {
         user: { select: { fullName: true, profileImage: true } },
@@ -84,7 +89,7 @@ export class AppCompatController {
         vehicles: { include: { vehicle: true } },
       },
     });
-    return guides.map((g) => {
+    const mapped = guides.map((g) => {
       const ratings = g.reviews.map((r) => r.starRating);
       const rating = ratings.length
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
@@ -164,6 +169,26 @@ export class AppCompatController {
           : {}),
       };
     });
+
+    const byPrice = (a: (typeof mapped)[number], b: (typeof mapped)[number]) => {
+      const av = a.hourlyRateCents ?? Number.POSITIVE_INFINITY;
+      const bv = b.hourlyRateCents ?? Number.POSITIVE_INFINITY;
+      return av - bv;
+    };
+    switch (sort) {
+      case 'rating':
+        return mapped.sort((a, b) => b.rating - a.rating);
+      case 'tours_completed':
+        return mapped.sort((a, b) => b.toursCompleted - a.toursCompleted);
+      case 'response_rate':
+        return mapped.sort((a, b) => b.responseRatePct - a.responseRatePct);
+      case 'price_asc':
+        return mapped.sort(byPrice);
+      case 'price_desc':
+        return mapped.sort((a, b) => byPrice(b, a));
+      default:
+        return mapped;
+    }
   }
 
   /// Maps a TourType name onto the app's category keys (lowercase

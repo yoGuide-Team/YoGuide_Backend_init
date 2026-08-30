@@ -16,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { TourTypeBodyDto, UpdateTourTypeDto } from './dto/admin-tour-types.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Tour Types')
 @ApiBearerAuth('access-token')
@@ -27,10 +28,16 @@ export class AdminTourTypesController {
   @Get()
   @ApiOperation({ summary: 'List tour types' })
   @ApiQuery({ name: 'regionId', required: false, description: 'Filter by region id (UUID)' })
-  list(@Query('regionId') regionId?: string) {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'name' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(
+    @Query('regionId') regionId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
     return this.prisma.tourType.findMany({
       where: regionId ? { regionId } : undefined,
-      orderBy: { name: 'asc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['name'] as const, { name: 'asc' }),
       include: {
         region: { select: { id: true, name: true } },
         _count: { select: { packages: true } },

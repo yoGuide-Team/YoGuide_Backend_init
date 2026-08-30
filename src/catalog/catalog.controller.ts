@@ -1,5 +1,6 @@
 import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /// Public, unauthenticated catalog browsing for the mobile/web apps.
@@ -56,12 +57,31 @@ export class CatalogController {
 
   @Get('packages')
   @ApiOperation({ summary: 'List public packages with tours and media' })
-  listPackages(
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    description: 'price_asc | price_desc | newest | duration_asc | duration_desc | rating',
+  })
+  async listPackages(
     @Query('tourTypeId') tourTypeId?: string,
     @Query('regionId') regionId?: string,
     @Query('search') search?: string,
+    @Query('sort') sort?: string,
   ) {
-    return this.prisma.package.findMany({
+    const orderBy: Prisma.PackageOrderByWithRelationInput | undefined =
+      sort === 'price_asc'
+        ? { price: 'asc' }
+        : sort === 'price_desc'
+          ? { price: 'desc' }
+          : sort === 'duration_asc'
+            ? { durationHours: 'asc' }
+            : sort === 'duration_desc'
+              ? { durationHours: 'desc' }
+              : sort === 'rating'
+                ? undefined // computed below, DB can't order by an aggregate here
+                : { createdAt: 'desc' }; // 'newest' and default
+
+    const packages = await this.prisma.package.findMany({
       where: {
         isCustom: false,
         tourTypeId: tourTypeId || undefined,
@@ -75,16 +95,24 @@ export class CatalogController {
             }
           : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       include: {
         tourType: {
           select: { id: true, name: true, region: { select: { id: true, name: true } } },
         },
         tours: true,
         media: true,
+        reviews: { select: { starRating: true } },
         _count: { select: { reviews: true, bookings: true } },
       },
     });
+
+    const withRating = packages.map((p) => ({
+      ...p,
+      rating: p.reviews.length ? p.reviews.reduce((s, r) => s + r.starRating, 0) / p.reviews.length : 0,
+    }));
+    if (sort === 'rating') withRating.sort((a, b) => b.rating - a.rating);
+    return withRating;
   }
 
   @Get('packages/:id')
@@ -175,10 +203,52 @@ export class CatalogController {
           take: 20,
           include: { user: { select: { id: true, fullName: true, profileImage: true } } },
         },
+        chefProfile: { select: { id: true } },
         _count: { select: { reviews: true, bookings: true } },
       },
     });
     if (!guide) throw new NotFoundException(`Guide '${id}' not found.`);
-    return guide;
+
+    // Flattened/computed fields alongside the raw relations above, matching
+    // the shape AppCompatController.listGuides() already computes for the
+    // list view — so a client that fetched the list can fetch one detail
+    // record here without a second, differently-shaped mapper.
+    const ratings = guide.reviews.map((r) => r.starRating);
+    const rating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+    const isChef = Boolean(guide.chefProfile);
+    return {
+      ...guide,
+      fullName: guide.user.fullName,
+      avatarUrl: guide.user.profileImage,
+      emoji: isChef ? '👨‍🍳' : '🧭',
+      // GuideProfile has no city column yet — every guide reports the same
+      // placeholder, matching AppCompatController.listGuides()'s existing
+      // stub rather than inventing a differently-wrong value here.
+      city: 'kigali',
+      rating: Math.round(rating * 10) / 10,
+      reviewCount: guide._count.reviews,
+      toursCompleted: guide._count.bookings,
+      responseRatePct: 95,
+      specialties: isChef ? ['#Food'] : [],
+      bio: guide.companyName ? `Guide at ${guide.companyName}` : '',
+    };
+  }
+
+  @Get('guides/:id/availability')
+  @ApiOperation({
+    summary: 'Get a guide\'s availability calendar',
+    description:
+      'Stub: returns the next 14 days as available, since there is no real calendar/blocked-dates model yet. Real per-day scheduling is a future addition.',
+  })
+  async getGuideAvailability(@Param('id') id: string) {
+    const guide = await this.prisma.guideProfile.findUnique({ where: { id }, select: { id: true } });
+    if (!guide) throw new NotFoundException(`Guide '${id}' not found.`);
+
+    const days = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      return { date: d.toISOString().slice(0, 10), available: true };
+    });
+    return { guideId: id, days };
   }
 }

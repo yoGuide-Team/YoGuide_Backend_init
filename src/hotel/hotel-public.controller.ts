@@ -9,7 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
 import { BookingStatus, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,19 +54,30 @@ export class HotelPublicController {
 
   @Get()
   @ApiOperation({ summary: 'List all verified hotels' })
-  async listHotels(@Query('city') city?: string) {
+  @ApiQuery({ name: 'sort', required: false, description: 'name | price_asc | price_desc | rating' })
+  async listHotels(@Query('city') city?: string, @Query('sort') sort?: string) {
     const where: Prisma.HotelWhereInput = { isVerified: true };
     if (city) {
       where.city = { contains: city, mode: 'insensitive' };
     }
-    return this.prisma.hotel.findMany({
+    const hotels = await this.prisma.hotel.findMany({
       where,
       include: {
         rooms: true,
         _count: { select: { bookings: true } },
       },
-      orderBy: { name: 'asc' },
+      orderBy: sort === 'name' || !sort ? { name: 'asc' } : undefined,
     });
+
+    // No rating column on Hotel yet (see hotelsApi.ts's mapping notes) —
+    // sort=rating is a stable no-op until reviews are hotel-linked, kept
+    // honest rather than faked.
+    const cheapestCents = (h: (typeof hotels)[number]) =>
+      h.rooms.length ? Math.min(...h.rooms.map((r) => r.nightlyRateCents)) : Number.POSITIVE_INFINITY;
+
+    if (sort === 'price_asc') return hotels.sort((a, b) => cheapestCents(a) - cheapestCents(b));
+    if (sort === 'price_desc') return hotels.sort((a, b) => cheapestCents(b) - cheapestCents(a));
+    return hotels;
   }
 
   @Get(':id')

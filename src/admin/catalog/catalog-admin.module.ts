@@ -11,6 +11,10 @@ import { AdminCatalogReviewsController } from './admin-catalog-reviews.controlle
 import { AdminCatalogBookingsController } from './admin-catalog-bookings.controller';
 import { AdminPaymentsController } from './admin-payments.controller';
 import { AdminGastronomyCategoriesController } from './admin-gastronomy-categories.controller';
+import { AdminHotelsController } from './admin-hotels.controller';
+import { AdminCardsController } from './admin-cards.controller';
+import { AdminCitiesController } from './admin-cities.controller';
+import { AdminNotificationsController } from './admin-notifications.controller';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 
 @Module({
@@ -27,6 +31,10 @@ import { AdminRoleGuard } from '../guards/admin-role.guard';
     AdminCatalogBookingsController,
     AdminPaymentsController,
     AdminGastronomyCategoriesController,
+    AdminHotelsController,
+    AdminCardsController,
+    AdminCitiesController,
+    AdminNotificationsController,
   ],
   providers: [AdminRoleGuard],
 })

@@ -8,13 +8,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { GuideProfileBodyDto, UpdateGuideProfileDto } from './dto/admin-guide-profiles.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Guide Profiles')
 @ApiBearerAuth('access-token')
@@ -25,9 +27,11 @@ export class AdminGuideProfilesController {
 
   @Get()
   @ApiOperation({ summary: 'List guide profiles' })
-  list() {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'numberOfTours | createdAt' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(@Query('sortBy') sortBy?: string, @Query('sortDir') sortDir?: string) {
     return this.prisma.guideProfile.findMany({
-      orderBy: { numberOfTours: 'desc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['numberOfTours'] as const, { numberOfTours: 'desc' }),
       include: {
         user: {
           select: { id: true, fullName: true, email: true, phone: true, role: true },

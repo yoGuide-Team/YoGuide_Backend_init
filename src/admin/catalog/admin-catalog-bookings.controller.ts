@@ -16,6 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { BookingBodyDto, UpdateBookingDto } from './dto/admin-catalog-bookings.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Bookings')
 @ApiBearerAuth('access-token')
@@ -28,13 +29,20 @@ export class AdminCatalogBookingsController {
   @ApiOperation({ summary: 'List bookings' })
   @ApiQuery({ name: 'userId', required: false, description: 'Filter by user id (UUID)' })
   @ApiQuery({ name: 'guideId', required: false, description: 'Filter by guide profile id (UUID)' })
-  list(@Query('userId') userId?: string, @Query('guideId') guideId?: string) {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'createdAt | scheduleDate' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(
+    @Query('userId') userId?: string,
+    @Query('guideId') guideId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ) {
     return this.prisma.booking.findMany({
       where: {
         userId: userId || undefined,
         guideId: guideId || undefined,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['createdAt', 'scheduleDate'] as const, { createdAt: 'desc' }),
       include: {
         user: { select: { id: true, fullName: true, email: true } },
         package: { select: { id: true, name: true } },

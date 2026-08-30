@@ -62,6 +62,13 @@ enum Language {
   SW
 }
 
+enum IdentityStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                     String              @id @default(uuid())
   fullName               String
@@ -93,10 +100,44 @@ model User {
   customPackages         Package[]           @relation("UserCustomPackages")
   wallet                 Wallet?
   walletTransactions     WalletTransaction[]
+  threadsAsA             MessageThread[]     @relation("ThreadParticipantA")
+  threadsAsB             MessageThread[]     @relation("ThreadParticipantB")
+  sentMessages           Message[]
+  notifications          Notification[]
+  itineraries            Itinerary[]
+  eventInterests         EventInterest[]
+  esimOrders             EsimOrder[]
+  cards                  Card[]
+  cardTransactions       CardTransaction[]
+  // KYC gate for yoEcoPay/Wallet — reviewed by an admin, see
+  // src/me/me-identity-verification.controller.ts.
+  identityStatus          IdentityStatus @default(NONE)
+  identityDocUrls         String[]       @default([])
+  identityRejectionReason String?
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
 
   @@index([currentRegionId])
+}
+
+/// In-app notification feed — currently read-only from the client's
+/// perspective (see src/notifications/notifications.controller.ts). Nothing
+/// writes rows here yet; other modules producing notifications on real
+/// events (booking confirmed, payment received, ...) is a future addition.
+model Notification {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  message       String?
+  type          String?
+  isRead        Boolean  @default(false)
+  transactionId String?
+  actionLabel   String?
+  actionUrl     String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
 }
 
 /// A planned or past visit — users can have many trips.
@@ -451,8 +492,14 @@ model Hotel {
   phone        String?
   website      String?
   isVerified   Boolean      @default(false)
-  rooms        HotelRoom[]
-  bookings     Booking[]
+  /// Short public code for the corporate-card payment flow
+  /// (POST /payments/initiate) — distinct from the internal uuid id.
+  /// Nullable only because it was added after some hotels already existed;
+  /// every hotel created going forward always gets one.
+  code             String?           @unique
+  rooms            HotelRoom[]
+  bookings         Booking[]
+  cardTransactions CardTransaction[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -483,4 +530,180 @@ model Payment {
   paymentMethod  PaymentMethod
   transactionRef String?
   createdAt      DateTime      @default(now())
+}
+
+/// A 1:1 conversation between two users (tourist <-> guide today, but not
+/// role-restricted). participantA/B order is whichever side created the
+/// thread first — callers must check both fields, never assume an order.
+model MessageThread {
+  id           String    @id @default(uuid())
+  participantA String
+  userA        User      @relation("ThreadParticipantA", fields: [participantA], references: [id])
+  participantB String
+  userB        User      @relation("ThreadParticipantB", fields: [participantB], references: [id])
+  messages     Message[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([participantA])
+  @@index([participantB])
+}
+
+model Message {
+  id        String        @id @default(uuid())
+  threadId  String
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User          @relation(fields: [senderId], references: [id])
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([threadId])
+}
+
+/// A user's saved trip plan — src/itineraries/itineraries.controller.ts.
+/// Owner-scoped: every route resolves through the caller's own rows.
+model Itinerary {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  isPublic    Boolean         @default(false)
+  coverImage  String?
+  items       ItineraryItem[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+model ItineraryItem {
+  id          String    @id @default(uuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  ordinal     Int
+  placeId     String?
+  notes       String?
+  scheduledAt DateTime?
+
+  @@index([itineraryId])
+}
+
+/// Public city directory backing the onboarding "what's on" step — GET
+/// /cities/:slug/events (src/cities/cities.controller.ts). No seed data:
+/// empty until a real events source is wired up, same convention as the
+/// hotels feature's placeholder-free approach.
+model City {
+  id     String  @id @default(uuid())
+  slug   String  @unique
+  name   String
+  events Event[]
+}
+
+model Event {
+  id         String          @id @default(uuid())
+  cityId     String
+  city       City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  title      String
+  venue      String?
+  priceLabel String?
+  startsAt   DateTime
+  tags       String[]        @default([])
+  interests  EventInterest[]
+
+  @@index([cityId])
+}
+
+/// POST /me/event-interests (src/me/event-interests.controller.ts).
+model EventInterest {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId         String
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reminderEnabled Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+}
+
+/// POST /orders/esim (src/esim/esim-orders.controller.ts) — recorded as a
+/// mock order, same honesty convention as WalletService.topUp()'s "mock
+/// top-up" labeling. No real eSIM provider is wired up.
+model EsimOrder {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bundleId       String
+  deliveryEmail  String
+  status         String   @default("mock_confirmed")
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum CardStatus {
+  ACTIVE
+  FROZEN
+  CANCELLED
+}
+
+enum CardTransactionStatus {
+  PENDING
+  SETTLED
+  DISPUTED
+  FAILED
+}
+
+/// Internally-issued corporate expense card — NOT a real bank card. No full
+/// card number is ever stored or returned, only `last4` (display purposes)
+/// and a bcrypt hash of the PIN (`pinHash`). Issued by an admin via
+/// POST /admin/cards, never self-issued (src/payments/cards.controller.ts,
+/// src/admin/catalog/admin-cards.controller.ts).
+model Card {
+  id           String            @id @default(uuid())
+  userId       String
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String            @default("virtual")
+  last4        String
+  pinHash      String
+  limitCents   Int               @default(0)
+  spentCents   Int               @default(0)
+  currency     String            @default("USD")
+  status       CardStatus        @default(ACTIVE)
+  organization String?
+  transactions CardTransaction[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([userId])
+}
+
+/// One corporate-card charge — src/payments/payments.controller.ts. `hotel`
+/// is the "service provider" side (POST /payments/initiate resolves a
+/// Hotel by its short `code`); no separate ServiceProvider model exists,
+/// since guides/hotels/gastronomy already cover that ground.
+model CardTransaction {
+  id          String                 @id @default(uuid())
+  cardId      String
+  card        Card                   @relation(fields: [cardId], references: [id])
+  userId      String
+  user        User                   @relation(fields: [userId], references: [id])
+  hotelId     String?
+  hotel       Hotel?                 @relation(fields: [hotelId], references: [id])
+  amountCents Int
+  currency    String                 @default("USD")
+  status      CardTransactionStatus  @default(SETTLED)
+  title       String?
+  details     String?
+  reference   String                 @unique
+  createdAt   DateTime               @default(now())
+
+  @@index([userId])
+  @@index([hotelId])
+  @@index([cardId])
 }

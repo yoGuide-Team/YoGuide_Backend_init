@@ -8,13 +8,15 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { VehicleBodyDto } from './dto/admin-vehicles.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Vehicles')
 @ApiBearerAuth('access-token')
@@ -25,9 +27,16 @@ export class AdminVehiclesController {
 
   @Get()
   @ApiOperation({ summary: 'List vehicles' })
-  list() {
+  @ApiQuery({ name: 'sortBy', required: false, description: 'name | seats | pricePerHour | pricePerDay' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
+  list(@Query('sortBy') sortBy?: string, @Query('sortDir') sortDir?: string) {
     return this.prisma.vehicle.findMany({
-      orderBy: { name: 'asc' },
+      orderBy: parseAdminSort(
+        sortBy,
+        sortDir,
+        ['name', 'seats', 'pricePerHour', 'pricePerDay'] as const,
+        { name: 'asc' },
+      ),
       include: { _count: { select: { guides: true, bookings: true } } },
     });
   }

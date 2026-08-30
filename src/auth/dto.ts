@@ -149,12 +149,6 @@ export class UpdateProfileDto {
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ example: 'newpassword1', minLength: 8 })
-  @IsOptional()
-  @IsString()
-  @MinLength(8)
-  password?: string;
-
   @ApiPropertyOptional({ example: 'Rwanda' })
   @IsOptional()
   @IsString()
@@ -276,4 +270,16 @@ export class UserProfileResponse {
 
   @ApiProperty()
   updatedAt!: Date;
+}
+
+export class ChangePasswordDto {
+  @ApiProperty({ description: 'Must match the account\'s current password.' })
+  @IsString()
+  @MinLength(1)
+  currentPassword!: string;
+
+  @ApiProperty({ example: 'newpassword1', minLength: 8 })
+  @IsString()
+  @MinLength(8)
+  newPassword!: string;
 }

@@ -15,6 +15,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuthGuard } from '../../auth/auth.guard';
 import { AdminRoleGuard } from '../guards/admin-role.guard';
 import { ReviewBodyDto, UpdateReviewDto } from './dto/admin-catalog-reviews.dto';
+import { parseAdminSort } from '../../common/admin-sort';
 
 @ApiTags('Admin · Reviews')
 @ApiBearerAuth('access-token')
@@ -28,10 +29,14 @@ export class AdminCatalogReviewsController {
   @ApiQuery({ name: 'userId', required: false, description: 'Filter by user id (UUID)' })
   @ApiQuery({ name: 'guideId', required: false, description: 'Filter by guide profile id (UUID)' })
   @ApiQuery({ name: 'packageId', required: false, description: 'Filter by package id (UUID)' })
+  @ApiQuery({ name: 'sortBy', required: false, description: 'createdAt | starRating' })
+  @ApiQuery({ name: 'sortDir', required: false, description: 'asc | desc' })
   list(
     @Query('userId') userId?: string,
     @Query('guideId') guideId?: string,
     @Query('packageId') packageId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     return this.prisma.review.findMany({
       where: {
@@ -39,7 +44,7 @@ export class AdminCatalogReviewsController {
         guideId: guideId || undefined,
         packageId: packageId || undefined,
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: parseAdminSort(sortBy, sortDir, ['createdAt', 'starRating'] as const, { createdAt: 'desc' }),
       include: {
         user: { select: { id: true, fullName: true, email: true } },
         guide: { select: { id: true, companyName: true, user: { select: { fullName: true } } } },
