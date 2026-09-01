@@ -12,7 +12,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { BookingModule } from './booking/booking.module';
 import { GuideModule } from './guide/guide.module';
 import { HotelModule } from './hotel/hotel.module';
-
+import { ChatModule } from './chat/chat.module';  
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -28,6 +28,7 @@ import { HotelModule } from './hotel/hotel.module';
     BookingModule,
     GuideModule,
     HotelModule,
+    ChatModule,
   ],
 })
 export class AppModule {}

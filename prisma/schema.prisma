@@ -9,59 +9,6 @@ datasource db {
   relationMode = "prisma"
 }
 
-enum UserRole {
-  ADMIN
-  TOURIST
-  GUIDE
-  HOTEL_MANAGER
-}
-
-enum VisitorType {
-  VISITOR
-  INVESTOR
-  LAYOVER
-  EXPERT
-}
-
-enum GuideType {
-  INDIVIDUAL
-  COMPANY
-}
-
-enum MediaType {
-  IMAGE
-  VIDEO
-  PDF
-}
-
-enum PaymentStatus {
-  PENDING
-  SUCCESSFUL
-  FAILED
-}
-
-enum PaymentMethod {
-  CARD
-  MOMO
-  WALLET
-  CASH
-}
-
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  DECLINED
-  CANCELLED
-  COMPLETED
-}
-
-enum Language {
-  EN
-  FR
-  RW
-  SW
-}
-
 model User {
   id                     String              @id @default(uuid())
   fullName               String
@@ -72,18 +19,20 @@ model User {
   role                   UserRole
   visitorType            VisitorType?
   profileImage           String?
-  googleId               String?             @unique
-  emailVerified          Boolean             @default(false)
-  otpCodeHash            String?
-  otpExpiresAt           DateTime?
-  passwordResetToken     String?
-  passwordResetExpiresAt DateTime?
   arrivalDate            DateTime?
   departureDate          DateTime?
   defaultLanguage        Language?
   inAppNotifications     Boolean             @default(true)
   emailNotifications     Boolean             @default(true)
   currentRegionId        String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  googleId               String?             @unique
+  emailVerified          Boolean             @default(false)
+  otpCodeHash            String?
+  otpExpiresAt           DateTime?
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
   currentRegion          Region?             @relation(fields: [currentRegionId], references: [id])
   trips                  Trip[]
   guideProfile           GuideProfile?
@@ -93,8 +42,6 @@ model User {
   customPackages         Package[]           @relation("UserCustomPackages")
   wallet                 Wallet?
   walletTransactions     WalletTransaction[]
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
 
   @@index([currentRegionId])
 }
@@ -103,32 +50,32 @@ model User {
 model Trip {
   id            String   @id @default(uuid())
   userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   regionId      String?
-  region        Region?  @relation(fields: [regionId], references: [id])
   label         String?
   arrivalDate   DateTime
   departureDate DateTime
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  region        Region?  @relation(fields: [regionId], references: [id])
 
   @@index([userId])
   @@index([regionId])
 }
 
 model GuideProfile {
-  id            String         @id @default(uuid())
-  userId        String         @unique
-  user          User           @relation(fields: [userId], references: [id])
+  id            String            @id @default(uuid())
+  userId        String            @unique
   guideType     GuideType
   companyName   String?
+  numberOfTours Int               @default(0)
   languages     Language[]
-  numberOfTours Int            @default(0)
   /// DEPRECATED — superseded by the `chefProfile` relation below. Kept
   /// read-only until existing rows are confirmed backfilled into
   /// ChefProfile, then dropped in a follow-up migration.
   gastronomy    Json?
+  user          User              @relation(fields: [userId], references: [id])
   chefProfile   ChefProfile?
   experiences   GuideExperience[]
   reviews       Review[]
@@ -141,12 +88,12 @@ model GuideProfile {
 model GuideExperience {
   id          String                 @id @default(uuid())
   guideId     String
-  guide       GuideProfile           @relation(fields: [guideId], references: [id], onDelete: Cascade)
   title       String
   description String?
   sortOrder   Int                    @default(0)
-  media       GuideExperienceMedia[]
   createdAt   DateTime               @default(now())
+  guide       GuideProfile           @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  media       GuideExperienceMedia[]
 
   @@index([guideId])
 }
@@ -154,10 +101,10 @@ model GuideExperience {
 model GuideExperienceMedia {
   id           String          @id @default(uuid())
   experienceId String
-  experience   GuideExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
   url          String
   type         MediaType
   sortOrder    Int             @default(0)
+  experience   GuideExperience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
 
   @@index([experienceId])
 }
@@ -173,8 +120,8 @@ model GastronomyCategory {
   iconKey     String?
   sortOrder   Int           @default(0)
   isActive    Boolean       @default(true)
-  chefs       ChefProfile[]
   createdAt   DateTime      @default(now())
+  chefs       ChefProfile[]
 }
 
 /// Chef/dining-experience profile — one per GuideProfile that hosts
@@ -183,9 +130,7 @@ model GastronomyCategory {
 model ChefProfile {
   id                 String             @id @default(uuid())
   guideId            String             @unique
-  guide              GuideProfile       @relation(fields: [guideId], references: [id])
   categoryId         String
-  category           GastronomyCategory @relation(fields: [categoryId], references: [id])
   restaurantName     String?
   experienceName     String?
   area               String?
@@ -194,10 +139,12 @@ model ChefProfile {
   storyTitle         String?
   storyDurationLabel String?
   storyText          String?
-  courses            ChefCourse[]
-  priceTiers         ChefPriceTier[]
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+  guide              GuideProfile       @relation(fields: [guideId], references: [id])
+  category           GastronomyCategory @relation(fields: [categoryId], references: [id])
+  courses            ChefCourse[]
+  priceTiers         ChefPriceTier[]
 
   @@index([categoryId])
 }
@@ -207,11 +154,11 @@ model ChefProfile {
 model ChefCourse {
   id             String            @id @default(uuid())
   chefId         String
-  chef           ChefProfile       @relation(fields: [chefId], references: [id])
   name           String
   description    String?
-  imageUrl       String?
   sortOrder      Int               @default(0)
+  imageUrl       String?
+  chef           ChefProfile       @relation(fields: [chefId], references: [id])
   bookingCourses BookingCourse[]
   media          ChefCourseMedia[]
 
@@ -221,10 +168,10 @@ model ChefCourse {
 model ChefCourseMedia {
   id        String     @id @default(uuid())
   courseId  String
-  course    ChefCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
   url       String
   type      MediaType
   sortOrder Int        @default(0)
+  course    ChefCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
 }
@@ -237,11 +184,11 @@ model ChefCourseMedia {
 model ChefPriceTier {
   id                String      @id @default(uuid())
   chefId            String
-  chef              ChefProfile @relation(fields: [chefId], references: [id])
   minPartySize      Int
   maxPartySize      Int?
   pricePerPersonUsd Decimal     @db.Decimal(12, 2)
   sortOrder         Int         @default(0)
+  chef              ChefProfile @relation(fields: [chefId], references: [id])
 
   @@index([chefId])
 }
@@ -257,8 +204,8 @@ model Region {
 model TourType {
   id       String    @id @default(uuid())
   regionId String
-  region   Region    @relation(fields: [regionId], references: [id])
   name     String
+  region   Region    @relation(fields: [regionId], references: [id])
   packages Package[]
 
   @@index([regionId])
@@ -267,21 +214,21 @@ model TourType {
 model Package {
   id            String         @id @default(uuid())
   tourTypeId    String
-  tourType      TourType       @relation(fields: [tourTypeId], references: [id])
   name          String
   description   String
   durationHours Int
   price         Decimal        @db.Decimal(12, 2)
+  createdAt     DateTime       @default(now())
+  createdById   String?
   /// A custom package is composed by a tourist from individual tours and is
   /// only visible to its creator — never in the public catalog.
   isCustom      Boolean        @default(false)
-  createdById   String?
+  tourType      TourType       @relation(fields: [tourTypeId], references: [id])
   createdBy     User?          @relation("UserCustomPackages", fields: [createdById], references: [id])
   tours         PackageTour[]
   media         PackageMedia[]
   reviews       Review[]
   bookings      Booking[]
-  createdAt     DateTime       @default(now())
 
   @@index([tourTypeId])
   @@index([createdById])
@@ -290,11 +237,11 @@ model Package {
 model PackageTour {
   id          String  @id @default(uuid())
   packageId   String
-  package     Package @relation(fields: [packageId], references: [id])
   title       String
   description String
   duration    Int
   price       Decimal @db.Decimal(12, 2)
+  package     Package @relation(fields: [packageId], references: [id])
 
   @@index([packageId])
 }
@@ -302,9 +249,9 @@ model PackageTour {
 model PackageMedia {
   id        String    @id @default(uuid())
   packageId String
-  package   Package   @relation(fields: [packageId], references: [id])
   url       String
   type      MediaType
+  package   Package   @relation(fields: [packageId], references: [id])
 
   @@index([packageId])
 }
@@ -333,19 +280,19 @@ model GuideVehicle {
 model Review {
   id         String        @id @default(uuid())
   userId     String
-  user       User          @relation(fields: [userId], references: [id])
   guideId    String?
-  guide      GuideProfile? @relation(fields: [guideId], references: [id])
   packageId  String?
-  package    Package?      @relation(fields: [packageId], references: [id])
+  message    String?
+  starRating Int
+  createdAt  DateTime      @default(now())
   /// Links this review to the completed booking it was left for — nullable
   /// since older admin-created reviews predate this field. Unique so a
   /// booking can only ever have one review.
   bookingId  String?       @unique
+  user       User          @relation(fields: [userId], references: [id])
+  guide      GuideProfile? @relation(fields: [guideId], references: [id])
+  package    Package?      @relation(fields: [packageId], references: [id])
   booking    Booking?      @relation(fields: [bookingId], references: [id])
-  message    String?
-  starRating Int
-  createdAt  DateTime      @default(now())
 
   @@index([userId])
   @@index([guideId])
@@ -356,28 +303,28 @@ model Review {
 model Booking {
   id              String              @id @default(uuid())
   userId          String
-  user            User                @relation(fields: [userId], references: [id])
   packageId       String?
-  package         Package?            @relation(fields: [packageId], references: [id])
   vehicleId       String?
-  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
   guideId         String?
-  guide           GuideProfile?       @relation(fields: [guideId], references: [id])
-  hotelId         String?
-  hotel           Hotel?               @relation(fields: [hotelId], references: [id])
   scheduleDate    DateTime
   pickupLocation  String?
+  totalDue        Decimal             @db.Decimal(12, 2)
+  createdAt       DateTime            @default(now())
+  notes           String?
+  paymentMethod   PaymentMethod?
+  status          BookingStatus       @default(PENDING)
   /// Gastronomy-only: number of diners. Null for tour/vehicle bookings.
   partySize       Int?
+  hotelId         String?
+  user            User                @relation(fields: [userId], references: [id])
+  package         Package?            @relation(fields: [packageId], references: [id])
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
+  guide           GuideProfile?       @relation(fields: [guideId], references: [id])
+  hotel           Hotel?              @relation(fields: [hotelId], references: [id])
   selectedCourses BookingCourse[]
-  totalDue        Decimal             @db.Decimal(12, 2)
-  status          BookingStatus       @default(PENDING)
-  paymentMethod   PaymentMethod?
-  notes           String?
   payment         Payment?
   review          Review?
   walletEntries   WalletTransaction[]
-  createdAt       DateTime            @default(now())
 
   @@index([userId])
   @@index([packageId])
@@ -437,50 +384,123 @@ model WalletTransaction {
 }
 
 model Hotel {
-  id           String       @id @default(uuid())
-  managerId    String       @unique
-  manager      User         @relation(fields: [managerId], references: [id])
+  id           String      @id @default(uuid())
+  managerId    String      @unique
   name         String
   description  String?
   city         String?
   address      String?
-  amenities    String[]     @default([])
+  amenities    String[]    @default([])
   checkInTime  String?
   checkOutTime String?
   contact      String?
   phone        String?
   website      String?
-  isVerified   Boolean      @default(false)
+  isVerified   Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  manager      User        @relation(fields: [managerId], references: [id])
   rooms        HotelRoom[]
   bookings     Booking[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
 
   @@index([managerId])
 }
 
 model HotelRoom {
-  id           String  @id @default(uuid())
-  hotelId      String
-  hotel        Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  name         String
-  totalRooms   Int     @default(0)
-  nightlyRateCents Int @default(0)
-  currency     String  @default("USD")
-  amenities    String[] @default([])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(uuid())
+  hotelId          String
+  name             String
+  totalRooms       Int      @default(0)
+  nightlyRateCents Int      @default(0)
+  currency         String   @default("USD")
+  amenities        String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  hotel            Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
 
   @@index([hotelId])
 }
 
 model Payment {
-  id             String        @id @default(uuid())
-  bookingId      String        @unique
-  booking        Booking       @relation(fields: [bookingId], references: [id])
-  amount         Decimal       @db.Decimal(12, 2)
-  status         PaymentStatus
-  paymentMethod  PaymentMethod
-  transactionRef String?
-  createdAt      DateTime      @default(now())
+  id                String        @id @default(uuid())
+  bookingId         String        @unique
+  amount            Decimal       @db.Decimal(12, 2)
+  status            PaymentStatus
+  paymentMethod     PaymentMethod
+  transactionRef    String?
+  createdAt         DateTime      @default(now())
+  platformFeeAmount Decimal?      @db.Decimal(12, 2)
+  booking           Booking       @relation(fields: [bookingId], references: [id])
+}
+
+enum UserRole {
+  ADMIN
+  TOURIST
+  GUIDE
+  HOTEL_MANAGER
+}
+
+enum VisitorType {
+  VISITOR
+  INVESTOR
+  LAYOVER
+  EXPERT
+}
+
+enum GuideType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  PDF
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  MOMO
+  WALLET
+  CASH
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  CANCELLED
+  COMPLETED
+}
+
+enum Language {
+  EN
+  FR
+  RW
+  SW
+}
+model MessageThread {
+  id            String          @id @default(uuid())
+  participantA  String
+  participantB  String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  messages      ThreadMessage[]
+
+  @@unique([participantA, participantB])
+}
+
+model ThreadMessage {
+  id        String        @id @default(uuid())
+  threadId  String
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId  String
+  body      String
+  createdAt DateTime      @default(now())
 }
