@@ -1012,6 +1012,23 @@ async function main() {
       });
     }
 
+    // Wallets for the extra tourist personas too — any of them may be the
+    // one signed in on a test device, and the app's wallet screens should
+    // show a usable balance for each.
+    for (const rev of reviewers) {
+      const rw = await prisma.wallet.upsert({
+        where: { userId: rev.id },
+        update: {},
+        create: { userId: rev.id, balanceCents: 0, currency: 'USD' },
+      });
+      if (rw.balanceCents < 2000) {
+        await prisma.wallet.update({ where: { id: rw.id }, data: { balanceCents: 2500 } });
+        await prisma.walletTransaction.create({
+          data: { walletId: rw.id, userId: rev.id, kind: 'topup', amountCents: 2500 - rw.balanceCents, currency: 'USD', method: 'demo', status: 'succeeded', notes: 'Demo top-up' },
+        });
+      }
+    }
+
     // notifications
     if ((await prisma.notification.count({ where: { userId: tourist.id } })) === 0) {
       await prisma.notification.createMany({
