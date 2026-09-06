@@ -113,6 +113,18 @@ const portrait = (slug: string) => U(PORTRAIT_POOL[hashIdx(slug, PORTRAIT_POOL.l
 const bcrypt = require('bcryptjs');
 const DEMO_PASSWORD = 'Demo@1234';
 
+// Passwords of the base seed's role accounts. When a demo persona reuses one
+// of those emails (the company guide + the hotel manager do), creating it
+// with the demo password would silently break the documented base login —
+// which seed ran first decides the password. Keep the base password so both
+// seeds agree regardless of run order.
+const BASE_PASSWORDS: Record<string, string> = {
+  'admin@yoguide.app': 'Y0guide#Admin2026',
+  'tourist@yoguide.app': 'Tourist@123',
+  'guide@yoguide.app': 'Guide@123',
+  'hotelmanager@yoguide.app': 'HotelManager@123',
+};
+
 async function hash(pw: string) {
   return bcrypt.hash(pw, 10);
 }
@@ -125,6 +137,9 @@ async function ensureUser(opts: {
   nationality?: string;
   profileImage?: string;
 }) {
+  // If this email belongs to a base role account, it must keep the base
+  // seed's password; everything else gets the demo password.
+  const pw = BASE_PASSWORDS[opts.email] ?? DEMO_PASSWORD;
   const existing = await prisma.user.findUnique({ where: { email: opts.email } });
   if (existing) {
     // keep portrait + display name fresh even if the row predates this seed
@@ -140,7 +155,7 @@ async function ensureUser(opts: {
     data: {
       email: opts.email,
       fullName: opts.fullName,
-      password: await hash(DEMO_PASSWORD),
+      password: await hash(pw),
       nationality: opts.nationality ?? 'Rwandan',
       role: opts.role,
       profileImage: opts.profileImage ?? null,
