@@ -2,9 +2,14 @@
  * DEMO SEED — investor-presentation dataset for yoGuide.
  *
  * Purpose: make every catalog / dashboard screen render a rich, internally
- * consistent, Rwanda-focused story. Runs on top of the base `seed.ts`
- * (which creates the 4 role accounts) and is fully idempotent — safe to run
- * repeatedly. It never deletes; it upserts by natural keys.
+ * consistent, Rwanda-focused story with REAL Rwanda photography (verified
+ * Unsplash CDN ids). Runs on top of the base `seed.ts` (which creates the
+ * 4 role accounts) and is fully idempotent — safe to run repeatedly. It
+ * never deletes; it upserts by natural keys. Beyond catalog content it also
+ * seeds provider availability (so POST /bookings works), verified payments
+ * (so guide earnings/stats render), bookings for every guide + hotel, cards,
+ * trips, applications, payouts, refunds, eSIM orders and event interests —
+ * i.e. every endpoint surface is testable after running this seed.
  *
  * Prices are deliberately kept in the base seed's tiny-value convention
  * ($0.02–$0.60) so real-payment testing stays cheap on every environment.
@@ -12,44 +17,87 @@
  *
  * Run:  npx ts-node prisma/seed-demo.ts
  */
-import { PrismaClient, MediaType, BookingStatus, PaymentMethod } from '@prisma/client';
+import { PrismaClient, MediaType, BookingStatus, PaymentMethod, PaymentStatus, CardStatus, CardTransactionStatus, ApplicationStatus, PayoutStatus, RefundStatus, IdentityStatus, GuideType } from '@prisma/client';
+import { startOfUtcDay, addUtcDays } from '../src/common/dates';
 
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// Image pool — Unsplash CDN (images.unsplash.com). Globally edge-cached and
-// fast on conference wifi; every id below was verified to return 200. Slugs
-// are matched by keyword to a themed photo so cards look intentional; a
-// hashed fallback keeps unknown slugs deterministic. Swap for licensed
-// Rwanda photography before any public launch — the frontends already fall
-// back to a coloured placeholder on load error.
+// Image pool — REAL Rwanda photography, served from Unsplash's CDN. Every id
+// below was HEAD-verified to return 200 on 2026-09-06; ids prefixed `P` are
+// premium photos served from plus.unsplash.com. Slugs are matched by keyword
+// to a themed photo so cards look intentional; a hashed fallback keeps
+// unknown slugs deterministic.
 // ---------------------------------------------------------------------------
 const U = (id: string, w = 1200) =>
-  `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=70`;
+  id.startsWith('P')
+    ? `https://plus.unsplash.com/premium_photo-${id.slice(1)}?auto=format&fit=crop&w=${w}&q=70`
+    : `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=70`;
 
-// keyword → Unsplash photo id (scenery / lodging / food)
-const SCENE: [RegExp, string][] = [
-  [/gorilla|monkey|chimp|fossey|primate/, '1541348263662-e068662d82af'],
-  [/bisoke|volcano|hike|kinigi/, '1534177616072-ef7dc120449d'],
-  [/kivu|congonile|ihema|boat|lake/, '1493246507139-91e8fad9978e'],
-  [/nyungwe|canopy|rainforest|forest/, '1523805009345-7448845a9e53'],
-  [/akagera|safari|game|wildlife|big.?five/, '1516426122078-c23e76319801'],
-  [/kigali|kimihurura|nyamirambo|city/, '1489749798305-4fea3ae63d43'],
-  [/coffee/, '1447933601403-0c6688de566e'],
-  [/isombe|brochette|dessert|course|cm-|food/, '1504674900247-0877df9cc836'],
-  [/serena|retreat|volcanoes-hotel|hotel|house|lodge/, '1445019980597-93fa8acb246c'],
-  [/room|suite/, '1566073771259-6a8506099945'],
-  [/itin|cover|trip/, '1502005097973-6a7082348e28'],
-  [/exp-/, '1504198266287-1659872e6590'],
+// keyword → verified photo ids (scenery / lodging / food / people)
+const SCENE: [RegExp, string[]][] = [
+  [/gorilla|monkey|chimp|fossey|primate/, [
+    '1581281863883-2469417a1668', '1463852247062-1bbca38f7805', '1581252789066-5110779bda1b',
+    '1605559911928-e03606ea0dc0', '1541348263662-e068662d82af',
+    'P1661843402797-d51337c5e42e', 'P1686232986066-df37c6972f57',
+  ]],
+  [/bisoke|volcano|hike|kinigi/, [
+    '1534177616072-ef7dc120449d', '1644726367483-ee7418a19b7d', '1756245994917-7fef9d2df7a9',
+    '1782424467126-c93435062b59', '1682773083915-5375145f99e5',
+  ]],
+  [/kivu|congonile|ihema|boat|lake/, [
+    '1493246507139-91e8fad9978e', '1589715718565-223fdf9b7cd4', '1514548383638-cef9251a73ec',
+    'P1696531220266-362a418da9b4', 'P1723881627816-30001656c4c1',
+  ]],
+  [/nyungwe|canopy|rainforest|forest/, [
+    '1523805009345-7448845a9e53', '1489640818597-89b1edc97db5', '1502005097973-6a7082348e28',
+    'P1666726272929-b0e9f14ff563',
+  ]],
+  [/akagera|safari|game|wildlife|big.?five/, [
+    '1516426122078-c23e76319801', '1665070385454-5e0c4421a38c', '1664793484534-497c51a08efb',
+    '1621267338079-6fb96bd73287', '1554490679-5b6a0a7eeab3', '1665070385510-2536c85280fc',
+    'P1664302700221-bd1549347986', 'P1661810056990-57be781caa2d', 'P1664302622341-e04fadaa8574',
+    'P1666116634482-66fdae7dd02b',
+  ]],
+  [/kigali|kimihurura|nyamirambo|city/, [
+    '1786795468102-84cd1ac41cd8', '1687986261123-b17f08f2796c', '1721402495451-41724ae641a4',
+    '1489749798305-4fea3ae63d43', 'P1675122317265-9cdd93e6b92d', 'P1675122317427-7d9dd55faf93',
+  ]],
+  [/coffee/, [
+    '1447933601403-0c6688de566e', '1553272711-3caf410bcb67', '1765533221476-21ba62961497',
+    'P1666976510011-28202995a11b', 'P1671379523824-c8aae61cb52a',
+  ]],
+  [/isombe|brochette|dessert|course|cm-|food/, [
+    '1504674900247-0877df9cc836', '1555939594-58d7cb561ad1', '1665332195309-9d75071138f0',
+    '1665400808116-f0e6339b7e9a', '1604329760661-e71dc83f8f26', '1773620494293-e9e075dd48fd',
+    'P1695297516698-fd7a320a55e5',
+  ]],
+  [/serena|retreat|volcanoes-hotel|hotel|house|lodge/, [
+    '1445019980597-93fa8acb246c', '1781039869379-5561fe260d26', '1779218449605-792bf0bef5e0',
+    '1777872721419-f738c532df1f', '1667987566780-3b31fa5485c8', '1549294413-26f195200c16',
+    '1561501900-3701fa6a0864', '1535205148555-bcbbc2a78913', 'P1682913629540-3857602b540c',
+  ]],
+  [/room|suite/, ['1566073771259-6a8506099945', 'P1687995672262-1ed45d6ed3d1']],
+  [/itin|cover|trip/, ['1502005097973-6a7082348e28', '1547970810-dc1eac37d174']],
+  [/exp-/, ['1504198266287-1659872e6590', '1776409933815-3497439f829a']],
+  [/market|craft|art|basket|textile/, [
+    '1776409933815-3497439f829a', '1760727467662-5f0943d196a8', '1779445727933-55e79be3c07b',
+    '1772411535291-aa5884035934', '1578509566163-068acd11b8e7', 'P1703385175281-9176ca9fc41d',
+  ]],
 ];
 const SCENE_POOL = [
-  '1523805009345-7448845a9e53', '1516426122078-c23e76319801', '1489749798305-4fea3ae63d43',
-  '1493246507139-91e8fad9978e', '1534177616072-ef7dc120449d', '1502005097973-6a7082348e28',
-  '1547970810-dc1eac37d174', '1504198266287-1659872e6590',
+  '1786795468102-84cd1ac41cd8', '1687986261123-b17f08f2796c', '1581281863883-2469417a1668',
+  '1665070385454-5e0c4421a38c', '1589715718565-223fdf9b7cd4', '1644726367483-ee7418a19b7d',
+  '1555939594-58d7cb561ad1', '1776409933815-3497439f829a', '1553272711-3caf410bcb67',
+  'P1661843402797-d51337c5e42e', 'P1696531220266-362a418da9b4', 'P1664302700221-bd1549347986',
 ];
 const PORTRAIT_POOL = [
-  '1507003211169-0a1dd7228f2d', '1494790108377-be9c29b29330', '1500648767791-00dcc994a43e',
-  '1534528741775-53994a69daeb', '1558898479-33c0057a5d12', '1531123897727-8f129e1688ce',
+  '1593351799227-75df2026356b', '1613876215075-276fd62c89a4', '1531123897727-8f129e1688ce',
+  '1632765854612-9b02b6ec2b15', '1518882570151-157128e78fa1', '1605980776566-0486c3ac7617',
+  '1522529599102-193c0d76b5b6', '1507003211169-0a1dd7228f2d', '1494790108377-be9c29b29330',
+  '1500648767791-00dcc994a43e', '1534528741775-53994a69daeb', '1558898479-33c0057a5d12',
+  'P1745624797642-4f522d5bcbfe', 'P1698749344907-a4207ef21593', 'P1708275672423-837db6d3d700',
+  'P1661895504446-902ae02bbc05',
 ];
 const hashIdx = (s: string, n: number) => {
   let h = 0;
@@ -57,7 +105,7 @@ const hashIdx = (s: string, n: number) => {
   return Math.abs(h) % n;
 };
 const img = (slug: string) => {
-  for (const [re, id] of SCENE) if (re.test(slug)) return U(id);
+  for (const [re, ids] of SCENE) if (re.test(slug)) return U(ids[hashIdx(slug, ids.length)]);
   return U(SCENE_POOL[hashIdx(slug, SCENE_POOL.length)]);
 };
 const portrait = (slug: string) => U(PORTRAIT_POOL[hashIdx(slug, PORTRAIT_POOL.length)], 480);
@@ -116,6 +164,39 @@ async function ensureTourType(name: string, regionId: string) {
 // ---------------------------------------------------------------------------
 async function main() {
   console.log('🌱  DEMO SEED starting…');
+
+  // --- 0. Optional full reset (RESET=1) -------------------------------------
+  // Previous experimental seed runs leave stale artifacts (half-configured
+  // guide profiles, orphan bookings, unverified payments). Wiping gives a
+  // coherent dataset. relationMode="prisma" means there are NO database-level
+  // foreign keys, so every child table must be named explicitly — CASCADE
+  // alone will NOT reach them. Full reset flow:
+  //   RESET=1 npx ts-node prisma/seed-demo.ts   (wipe + demo content)
+  //   npx prisma db seed                        (recreate the 4 role accounts)
+  //   npx ts-node prisma/seed-demo.ts           (fill in tourist sections)
+  // Only dev/local databases should use this.
+  if (process.env.RESET === '1') {
+    console.log('  ⏳ RESET=1 — wiping demo data (then re-run seed.ts + this seed)…');
+    await prisma.$executeRawUnsafe(`
+      TRUNCATE TABLE
+        "PaymentAttempt", "Payment", "Refund", "Payout",
+        "BookingCourse", "Booking",
+        "CardTransaction", "Card", "EsimOrder", "EventInterest",
+        "WalletTransaction", "Wallet",
+        "ItineraryItem", "Itinerary", "Message", "MessageThread",
+        "Review", "Notification", "Trip",
+        "AvailabilityException", "ProviderAvailability",
+        "GuideVehicle", "GuideExperienceMedia", "GuideExperience",
+        "ChefCourseMedia", "ChefPriceTier", "ChefCourse", "ChefProfile",
+        "GuideProfile",
+        "PackageMedia", "PackageTour", "Package",
+        "TourType", "Region", "HotelRoom", "Hotel",
+        "GuideApplication", "GastronomyCategory", "City", "Event", "Vehicle"
+      CASCADE;
+    `);
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE "User" CASCADE;`);
+    console.log('  ✓ all tables truncated');
+  }
 
   // --- 0a. Drop any first-generation picsum.photos image rows so the
   //     create-guards below refill them from the current (Unsplash) pool.
@@ -1053,6 +1134,383 @@ async function main() {
     }
   }
   console.log('  ✓ demo tourist wallet / notifications / bookings / itinerary / messages');
+
+  // --- 12. Provider availability (weekly schedules + overrides) --------
+  // Without these rows AvailabilityService treats every guide as closed and
+  // POST /bookings refuses. The 18th migration backfilled pre-existing
+  // providers, but profiles created by THIS seed have no weekly rules yet.
+  // Windows are per-profile so seeded booking times (6am gorilla starts,
+  // 7am safaris, 7pm dinner tables) are inside each guide's window.
+  const GUIDE_WINDOWS: Record<string, { start: string; end: string; capacity: number }> = {
+    'emmanuel': { start: '05:00', end: '18:00', capacity: 6 },
+    'jeanpaul': { start: '08:00', end: '18:00', capacity: 4 },
+    'aline': { start: '06:00', end: '18:00', capacity: 6 },
+    'amahoro-tours': { start: '08:00', end: '18:00', capacity: 8 },
+    'chef-mukamana': { start: '10:00', end: '21:00', capacity: 10 },
+  };
+  const WEEKDAYS = [1, 2, 3, 4, 5, 6]; // Mon–Sat; Sunday stays closed
+  let availRows = 0;
+  for (const [gkey, gid] of Object.entries(guideProfileByKey)) {
+    const w = GUIDE_WINDOWS[gkey] ?? { start: '08:00', end: '18:00', capacity: 4 };
+    for (const weekday of WEEKDAYS) {
+      const exists = await prisma.providerAvailability.findUnique({
+        where: { guideId_weekday: { guideId: gid, weekday } },
+      });
+      if (!exists) {
+        await prisma.providerAvailability.create({
+          data: { guideId: gid, weekday, startTime: w.start, endTime: w.end, capacity: w.capacity },
+        });
+        availRows++;
+      }
+    }
+  }
+  const emmId = guideProfileByKey['emmanuel'];
+  const amahoroId = guideProfileByKey['amahoro-tours'];
+  if (emmId) {
+    const away = startOfUtcDay(addUtcDays(new Date(), 12));
+    const dup = await prisma.availabilityException.findUnique({
+      where: { guideId_date: { guideId: emmId, date: away } },
+    });
+    if (!dup) {
+      await prisma.availabilityException.create({
+        data: { guideId: emmId, date: away, isBlocked: true, reason: 'Off-site mountain-rescue training' },
+      });
+    }
+  }
+  if (amahoroId) {
+    const full = startOfUtcDay(addUtcDays(new Date(), 20));
+    const dup = await prisma.availabilityException.findUnique({
+      where: { guideId_date: { guideId: amahoroId, date: full } },
+    });
+    if (!dup) {
+      await prisma.availabilityException.create({
+        data: { guideId: amahoroId, date: full, isBlocked: false, capacity: 12, reason: 'Group-booking allowance' },
+      });
+    }
+  }
+  console.log(`  ✓ availability: ${availRows} weekly rules + 2 overrides`);
+
+  // --- 13. Verified payments (guide/hotel earnings & stats render) -----
+  // /guide/earnings only counts SUCCESSFUL payments with a non-null
+  // verifiedAt; the section-11 bookings were inserted directly, so attach a
+  // real Payment row (provider 'wallet') + an audit attempt to each one.
+  let paymentRows = 0;
+  if (tourist) {
+    const paidBookings = await prisma.booking.findMany({
+      where: { userId: tourist.id, notes: 'demo-seed' },
+      select: { id: true, totalDue: true, paymentMethod: true, status: true },
+    });
+    for (const b of paidBookings) {
+      if (b.status !== BookingStatus.CONFIRMED && b.status !== BookingStatus.COMPLETED) continue;
+      const existing = await prisma.payment.findUnique({ where: { bookingId: b.id } });
+      if (existing) continue;
+      // Any paid booking we seeded is a completed transaction in the real
+      // world — verify it, so /guide/earnings counts it (it only counts
+      // SUCCESSFUL payments with a non-null verifiedAt).
+      const verified = true;
+      const payment = await prisma.payment.create({
+        data: {
+          bookingId: b.id,
+          amount: b.totalDue,
+          currency: 'USD',
+          status: PaymentStatus.SUCCESSFUL,
+          paymentMethod: b.paymentMethod ?? PaymentMethod.WALLET,
+          provider: 'wallet',
+          providerRef: `wallet-seed-${b.id.slice(0, 8)}`,
+          providerStatus: 'SUCCESSFUL',
+          verifiedAt: verified ? new Date() : null,
+        },
+      });
+      await prisma.paymentAttempt.create({
+        data: { paymentId: payment.id, action: 'verify', resultStatus: 'SUCCESSFUL', httpStatus: 200 },
+      });
+      paymentRows++;
+    }
+  }
+  console.log(`  ✓ payments: ${paymentRows} verified Payment rows (+ audit attempts)`);
+
+  // --- 14. Bookings for every provider + hotel (dashboards render) -----
+  const jpId = guideProfileByKey['jeanpaul'];
+  const alineId = guideProfileByKey['aline'];
+  const chefProfileId = guideProfileByKey['chef-mukamana'];
+  const sarah = reviewers[0];
+  const kwame = reviewers[1];
+  const lena = reviewers[2];
+  const maria = reviewers[3];
+  const chefProfile = chefProfileId
+    ? await prisma.chefProfile.findUnique({ where: { guideId: chefProfileId } })
+    : null;
+  const chefCourses = chefProfile
+    ? await prisma.chefCourse.findMany({ where: { chefId: chefProfile.id }, select: { id: true } })
+    : [];
+
+  let refCounter = await prisma.booking.count();
+  const addBooking = async (data: {
+    ref: string;
+    userId: string;
+    packageId?: string;
+    guideId?: string;
+    hotelId?: string;
+    scheduleDate: Date;
+    startTime?: string;
+    pickupLocation?: string;
+    partySize?: number;
+    guests: number;
+    totalDue: number;
+    status: BookingStatus;
+    paymentMethod: PaymentMethod;
+    courses?: string[];
+    notes?: string;
+  }) => {
+    const dup = await prisma.booking.findUnique({ where: { reference: data.ref } });
+    if (dup) return dup;
+    refCounter += 1;
+    const b = await prisma.booking.create({
+      data: {
+        userId: data.userId,
+        packageId: data.packageId,
+        guideId: data.guideId,
+        hotelId: data.hotelId,
+        scheduleDate: data.scheduleDate,
+        startTime: data.startTime,
+        pickupLocation: data.pickupLocation,
+        partySize: data.partySize,
+        guests: data.guests,
+        totalDue: data.totalDue,
+        currency: 'USD',
+        status: data.status,
+        paymentMethod: data.paymentMethod,
+        notes: data.notes ?? 'demo-seed',
+        reference: data.ref,
+      },
+    });
+    if (data.courses?.length) {
+      await prisma.bookingCourse.createMany({
+        data: data.courses.map((courseId) => ({ bookingId: b.id, courseId })),
+      });
+    }
+    if (data.status === BookingStatus.CONFIRMED || data.status === BookingStatus.COMPLETED) {
+      await prisma.payment.create({
+        data: {
+          bookingId: b.id,
+          amount: data.totalDue,
+          currency: 'USD',
+          status: PaymentStatus.SUCCESSFUL,
+          paymentMethod: data.paymentMethod,
+          provider: 'wallet',
+          providerRef: `wallet-seed-${b.id.slice(0, 8)}`,
+          providerStatus: 'SUCCESSFUL',
+          verifiedAt: new Date(),
+        },
+      });
+    }
+    return b;
+  };
+
+  const cityPkg = pkgByKey['kigali-city-highlights'];
+  const akageraPkg = pkgByKey['akagera-game-drive'];
+  const kivuBikePkg = pkgByKey['congo-nile-ebike'];
+  const gorillaPkg = pkgByKey['gorilla-trek-volcanoes'];
+
+  if (jpId && cityPkg) {
+    await addBooking({
+      ref: 'YG-DEMO-JP-CITY-COMPLETE',
+      userId: sarah.id, packageId: cityPkg, guideId: jpId,
+      scheduleDate: soon(-20, 9), startTime: '09:00', pickupLocation: 'The Retreat by Heaven',
+      guests: 2, totalDue: 0.24, status: BookingStatus.COMPLETED, paymentMethod: PaymentMethod.WALLET,
+    });
+    await addBooking({
+      ref: 'YG-DEMO-JP-CITY-CONFIRMED',
+      userId: kwame.id, packageId: cityPkg, guideId: jpId,
+      scheduleDate: soon(4, 9), startTime: '09:00', pickupLocation: 'Kigali Serena Hotel',
+      guests: 1, totalDue: 0.12, status: BookingStatus.CONFIRMED, paymentMethod: PaymentMethod.WALLET,
+    });
+  }
+  if (alineId && akageraPkg) {
+    await addBooking({
+      ref: 'YG-DEMO-ALINE-AKAGERA-CONFIRMED',
+      userId: maria.id, packageId: akageraPkg, guideId: alineId,
+      scheduleDate: soon(9, 7), startTime: '07:00', pickupLocation: 'Kigali Serena Hotel',
+      guests: 2, totalDue: 0.7, status: BookingStatus.CONFIRMED, paymentMethod: PaymentMethod.WALLET,
+    });
+    await addBooking({
+      ref: 'YG-DEMO-ALINE-AKAGERA-COMPLETE',
+      userId: lena.id, packageId: akageraPkg, guideId: alineId,
+      scheduleDate: soon(-30, 7), startTime: '07:00', pickupLocation: 'The Retreat by Heaven',
+      guests: 2, totalDue: 0.7, status: BookingStatus.COMPLETED, paymentMethod: PaymentMethod.WALLET,
+    });
+  }
+  if (amahoroId && kivuBikePkg) {
+    await addBooking({
+      ref: 'YG-DEMO-AMAHORO-KIVU-CONFIRMED',
+      userId: kwame.id, packageId: kivuBikePkg, guideId: amahoroId,
+      scheduleDate: soon(6, 8), startTime: '08:00', pickupLocation: 'Lake Kivu Serena Hotel',
+      guests: 4, totalDue: 0.72, status: BookingStatus.CONFIRMED, paymentMethod: PaymentMethod.MOMO,
+    });
+  }
+  if (chefProfileId && chefCourses.length) {
+    await addBooking({
+      ref: 'YG-DEMO-CHEF-TABLE-CONFIRMED',
+      userId: lena.id, guideId: chefProfileId,
+      scheduleDate: soon(5, 19), startTime: '19:00', pickupLocation: "Chantal's Table, Kimihurura",
+      partySize: 4, guests: 4, totalDue: 0.2, status: BookingStatus.CONFIRMED,
+      paymentMethod: PaymentMethod.WALLET, courses: chefCourses.slice(0, 3).map((c) => c.id),
+    });
+  }
+  if (emmId && gorillaPkg) {
+    await addBooking({
+      ref: 'YG-DEMO-EMM-GORILLA-PENDING',
+      userId: maria.id, packageId: gorillaPkg, guideId: emmId,
+      scheduleDate: soon(8, 6), startTime: '06:00', pickupLocation: 'Five Volcanoes Boutique Hotel, Kinigi',
+      guests: 2, totalDue: 1.2, status: BookingStatus.PENDING, paymentMethod: PaymentMethod.CASH,
+    });
+  }
+  const hotelBookings: {
+    ref: string; code: string; guest: typeof sarah; daysAgo: number; room: string; amount: number;
+  }[] = [
+    { ref: 'YG-DEMO-HTL-SERENA-KGL', code: 'SERENA-KGL', guest: sarah, daysAgo: -12, room: 'Executive Room', amount: 0.56 },
+    { ref: 'YG-DEMO-HTL-RETREAT-KGL', code: 'RETREAT-KGL', guest: kwame, daysAgo: -8, room: 'Garden Room', amount: 0.68 },
+    { ref: 'YG-DEMO-HTL-FIVEVOLC-MUS', code: 'FIVEVOLC-MUS', guest: lena, daysAgo: -15, room: 'Cottage Twin', amount: 0.52 },
+    { ref: 'YG-DEMO-HTL-SERENA-KVU', code: 'SERENA-KVU', guest: maria, daysAgo: -6, room: 'Lake View Room', amount: 0.9 },
+    { ref: 'YG-DEMO-HTL-OO-NYUNGWE', code: 'OO-NYUNGWE', guest: sarah, daysAgo: -25, room: 'Forest Room', amount: 1.1 },
+  ];
+  for (const hb of hotelBookings) {
+    const hotelId = hotelByCode[hb.code];
+    if (!hotelId) continue;
+    await addBooking({
+      ref: hb.ref, userId: hb.guest.id, hotelId,
+      scheduleDate: soon(hb.daysAgo, 14), pickupLocation: hb.room,
+      guests: 2, totalDue: hb.amount, status: BookingStatus.COMPLETED, paymentMethod: PaymentMethod.CARD,
+    });
+  }
+  console.log(`  ✓ bookings: ${await prisma.booking.count()} total after per-provider + hotel bookings`);
+
+  // --- 15. Corporate cards + transactions (card payment flow) ---------
+  if (tourist) {
+    const cardPin = await hash('1234');
+    let cardRows = 0;
+    const ensureCard = async (userId: string, last4: string, limitCents: number, spentCents: number, organization: string) => {
+      const existing = await prisma.card.findFirst({ where: { userId, last4 } });
+      if (existing) return existing;
+      const card = await prisma.card.create({
+        data: { userId, last4, pinHash: cardPin, limitCents, spentCents, currency: 'USD', status: CardStatus.ACTIVE, organization },
+      });
+      cardRows++;
+      return card;
+    };
+    const touristCard = await ensureCard(tourist.id, '4821', 100000, 2150, 'yoGuide Ltd');
+    const sarahCard = await ensureCard(sarah.id, '1093', 50000, 840, 'yoGuide Ltd');
+    const txns: {
+      cardId: string; userId: string; hotelId?: string; amountCents: number;
+      status: CardTransactionStatus; title: string; reference: string;
+    }[] = [
+      { cardId: touristCard.id, userId: tourist.id, hotelId: hotelByCode['SERENA-KGL'], amountCents: 1800, status: CardTransactionStatus.SETTLED, title: 'Kigali Serena Hotel — stay', reference: 'CARD-4821-001' },
+      { cardId: touristCard.id, userId: tourist.id, hotelId: hotelByCode['RETREAT-KGL'], amountCents: 350, status: CardTransactionStatus.SETTLED, title: 'The Retreat by Heaven — dinner', reference: 'CARD-4821-002' },
+      { cardId: sarahCard.id, userId: sarah.id, hotelId: hotelByCode['FIVEVOLC-MUS'], amountCents: 840, status: CardTransactionStatus.SETTLED, title: 'Five Volcanoes — trek package', reference: 'CARD-1093-001' },
+      { cardId: sarahCard.id, userId: sarah.id, amountCents: 120, status: CardTransactionStatus.DISPUTED, title: 'Nyungwe canopy tickets', reference: 'CARD-1093-002' },
+    ];
+    for (const t of txns) {
+      const dup = await prisma.cardTransaction.findUnique({ where: { reference: t.reference } });
+      if (!dup) await prisma.cardTransaction.create({ data: t });
+    }
+    console.log(`  ✓ cards: ${cardRows} new cards + ${txns.length} transactions`);
+  }
+
+  // --- 16. Trips, applications, interests, eSIM, payouts, refunds, KYC -
+  if (tourist) {
+    if ((await prisma.trip.count({ where: { userId: tourist.id } })) === 0) {
+      await prisma.trip.createMany({
+        data: [
+          { userId: tourist.id, regionId: kigali.id, label: 'Kigali week', arrivalDate: soon(-14), departureDate: soon(-7), notes: 'City tours + gastronomy' },
+          { userId: tourist.id, regionId: musanze.id, label: 'Gorilla weekend', arrivalDate: soon(5), departureDate: soon(8), notes: 'Gorilla trek with Emmanuel' },
+        ],
+      });
+    }
+    const event = await prisma.event.findFirst({ where: { cityId: cityKigali.id } });
+    if (event && (await prisma.eventInterest.count({ where: { userId: tourist.id } })) === 0) {
+      await prisma.eventInterest.create({ data: { userId: tourist.id, eventId: event.id, reminderEnabled: true } });
+    }
+    if ((await prisma.esimOrder.count({ where: { userId: tourist.id } })) === 0) {
+      await prisma.esimOrder.create({ data: { userId: tourist.id, bundleId: 'rwanda-2gb-7d', deliveryEmail: tourist.email, status: 'mock_confirmed' } });
+    }
+  }
+  if ((await prisma.guideApplication.count({ where: { status: ApplicationStatus.PENDING } })) === 0) {
+    await prisma.guideApplication.create({
+      data: {
+        fullName: 'Eric Mugisha', email: 'eric.mugisha@example.com', phone: '+250 788 555 019',
+        nationality: 'Rwandan', guideType: GuideType.INDIVIDUAL, city: 'Musanze',
+        bio: 'Certified English/French trekking guide, 6 years in Volcanoes NP.',
+        languages: ['EN', 'FR', 'RW'], wantsGastronomy: false,
+      },
+    });
+  }
+  const payoutSpecs: { guideKey: string; amount: number; ref: string; daysAgo: number }[] = [
+    { guideKey: 'emmanuel', amount: 45.5, ref: 'PYO-DEMO-0001', daysAgo: -14 },
+    { guideKey: 'aline', amount: 28.0, ref: 'PYO-DEMO-0002', daysAgo: -7 },
+  ];
+  for (const p of payoutSpecs) {
+    const gid = guideProfileByKey[p.guideKey];
+    if (!gid) continue;
+    const dup = await prisma.payout.findUnique({ where: { reference: p.ref } });
+    if (!dup) {
+      await prisma.payout.create({
+        data: {
+          guideId: gid, amount: p.amount, currency: 'USD', status: PayoutStatus.SUCCESSFUL,
+          destinationMsisdn: '250788555000', destinationName: 'Guide Payout',
+          reference: p.ref, providerRef: `xentri-${p.ref.toLowerCase()}`, providerStatus: 'SUCCESSFUL',
+          processedAt: addUtcDays(new Date(), p.daysAgo),
+        },
+      });
+    }
+  }
+  if (tourist && jpId && cityPkg) {
+    const refundBook = await prisma.booking.findFirst({ where: { userId: tourist.id, notes: 'demo-refund' } });
+    if (!refundBook) {
+      const rb = await addBooking({
+        ref: 'YG-DEMO-JP-CITY-REFUNDED',
+        userId: tourist.id, packageId: cityPkg, guideId: jpId,
+        scheduleDate: soon(14, 10), startTime: '10:00', pickupLocation: 'The Retreat by Heaven',
+        guests: 2, totalDue: 0.24, status: BookingStatus.CANCELLED, paymentMethod: PaymentMethod.WALLET,
+        notes: 'demo-refund',
+      });
+      await prisma.refund.create({
+        data: {
+          bookingId: rb.id, amount: 0.12, currency: 'USD', status: RefundStatus.PENDING,
+          policyRule: 'half_24_to_72h', reason: 'Customer cancelled 36h before start', requestedById: tourist.id,
+        },
+      });
+    }
+  }
+  await prisma.user.update({
+    where: { id: sarah.id },
+    data: { identityStatus: IdentityStatus.APPROVED, identityDocUrls: [] },
+  });
+  await prisma.user.update({
+    where: { id: maria.id },
+    data: { identityStatus: IdentityStatus.PENDING, identityDocUrls: [] },
+  });
+  console.log('  ✓ trips / applications / interests / eSIM / payouts / refunds / KYC');
+
+  // --- 17. Provider-owned packages (/guide/packages) ------------------
+  const ownerAssignments: { pkgKey: string; guideKey: string }[] = [
+    { pkgKey: 'gorilla-trek-volcanoes', guideKey: 'emmanuel' },
+    { pkgKey: 'golden-monkey-trek', guideKey: 'emmanuel' },
+    { pkgKey: 'kivu-belt-boat', guideKey: 'amahoro-tours' },
+    { pkgKey: 'congo-nile-ebike', guideKey: 'amahoro-tours' },
+    { pkgKey: 'akagera-game-drive', guideKey: 'amahoro-tours' },
+  ];
+  let ownerRows = 0;
+  for (const a of ownerAssignments) {
+    const pkgId = pkgByKey[a.pkgKey];
+    const ownerId = guideProfileByKey[a.guideKey];
+    if (!pkgId || !ownerId) continue;
+    const pkg = await prisma.package.findUnique({ where: { id: pkgId } });
+    if (pkg && pkg.ownerId !== ownerId) {
+      await prisma.package.update({ where: { id: pkgId }, data: { ownerId } });
+      ownerRows++;
+    }
+  }
+  console.log(`  ✓ package ownership: ${ownerRows} packages assigned to providers`);
 
   console.log('✅  DEMO SEED complete.');
 }
