@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mail/mail.module';
 import { AuthModule } from './auth/auth.module';
@@ -22,10 +24,19 @@ import { EsimModule } from './esim/esim.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { GuideApplicationsModule } from './guide-applications/guide-applications.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Baseline rate limiting for every route. Auth routes tighten this
+    // further with their own @Throttle decorators — without this, OTP codes
+    // and passwords were brute-forceable at unlimited speed.
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 1000, limit: 20 },
+      { name: 'medium', ttl: 60_000, limit: 120 },
+    ]),
     PrismaModule,
     MailModule,
     AuthModule,
@@ -48,6 +59,9 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     PaymentsModule,
     ChatbotModule,
     RecommendationsModule,
+    AvailabilityModule,
+    GuideApplicationsModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

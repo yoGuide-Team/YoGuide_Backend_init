@@ -22,17 +22,28 @@ services:
     container_name: yoguide-app
     ports:
       - "3031:3031"
+    # Secrets are read from the environment / an untracked .env file — never
+    # written here. This file is committed to git, and it previously carried
+    # a real Gmail app password and JWT secret in plaintext.
+    # Copy .env.example to .env and fill it in; compose picks it up automatically.
     environment:
       - NODE_ENV=production
-      - PORT=3031  # Changed from 3030 to 3031
-      - DATABASE_URL=postgresql://yoguide:yoguide@host.docker.internal:5433/yoguide?schema=public
-      - DIRECT_URL=postgresql://yoguide:yoguide@host.docker.internal:5433/yoguide?schema=public
-      - JWT_SECRET=change-me-to-a-long-random-string
-      - JWT_EXPIRES_IN=30d
-      - GOOGLE_CLIENT_ID=144840489403-kkh8tc7ral09rmeqevec56cf4m361t7p.apps.googleusercontent.com
-      - FRONTEND_URL=yoguide://reset-password
-      - GMAIL_USER=yoGuideafrica@gmail.com
-      - GMAIL_APP_PASSWORD=umbwirenyiguhe
+      - PORT=3031
+      - DATABASE_URL=${DATABASE_URL:?set DATABASE_URL in .env}
+      - DIRECT_URL=${DIRECT_URL:?set DIRECT_URL in .env}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - FRONTEND_URL=${FRONTEND_URL:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - GMAIL_USER=${GMAIL_USER:-}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-}
+      - YOECOPAY_WORKER_BASE=${YOECOPAY_WORKER_BASE:-}
+      - YOECOPAY_APP_SECRET=${YOECOPAY_APP_SECRET:-}
+      - YOECOPAY_WEBHOOK_SECRET=${YOECOPAY_WEBHOOK_SECRET:-}
+      - USD_TO_RWF_RATE=${USD_TO_RWF_RATE:-}
     depends_on:
       postgres:
         condition: service_healthy

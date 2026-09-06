@@ -72,6 +72,8 @@ export class AppCompatController {
         user: { select: { fullName: true, profileImage: true } },
         reviews: { select: { starRating: true } },
         _count: { select: { bookings: true } },
+        availability: { where: { isActive: true }, select: { weekday: true } },
+        bookings: { select: { status: true } },
         chefProfile: {
           include: {
             category: true,
@@ -101,24 +103,33 @@ export class AppCompatController {
       const lowestTierUsd = gastro?.priceTiers.length
         ? Math.min(...gastro.priceTiers.map((t) => t.pricePerPersonUsd.toNumber()))
         : null;
+      // Real values from real columns. city, responseRatePct, isVerified
+      // and isAvailable were previously hardcoded identically for every
+      // guide regardless of the truth.
+      const handled = g.bookings.filter((b) => b.status !== 'PENDING').length;
+      const responseRatePct = g.bookings.length
+        ? Math.round((handled / g.bookings.length) * 100)
+        : null;
       return {
         id: g.id,
         userId: g.userId,
         fullName: g.user.fullName,
         emoji: gastro ? '👨‍🍳' : '🧭',
         avatarUrl: g.user.profileImage,
-        city: 'kigali',
+        city: g.city,
         rating: Math.round(rating * 10) / 10,
         reviewCount: ratings.length,
-        toursCompleted: g._count.bookings,
-        responseRatePct: 95,
+        toursCompleted: g.bookings.filter((b) => b.status === 'COMPLETED').length,
+        responseRatePct,
         specialties: gastro ? ['#Food'] : [],
         languages: g.languages,
-        bio: g.companyName ? `Guide at ${g.companyName}` : '',
+        bio: g.bio ?? (g.companyName ? `Guide at ${g.companyName}` : ''),
         hourlyRateCents: lowestTierUsd != null ? Math.round(lowestTierUsd * 100) : null,
         currency: 'USD',
-        isVerified: true,
-        isAvailable: true,
+        isVerified: g.isVerified,
+        // "Available" now means the provider has opened at least one
+        // weekday for bookings, rather than an unconditional true.
+        isAvailable: g.availability.length > 0,
         // Every guide can have showcase Experiences, not just chefs — keep
         // this outside the `gastro ? ... : {}` block below.
         experiences: g.experiences.map((e) => ({
@@ -181,7 +192,9 @@ export class AppCompatController {
       case 'tours_completed':
         return mapped.sort((a, b) => b.toursCompleted - a.toursCompleted);
       case 'response_rate':
-        return mapped.sort((a, b) => b.responseRatePct - a.responseRatePct);
+        // Guides with no bookings yet have no response rate; sort them last
+        // rather than treating "unknown" as zero or as a fabricated 95%.
+        return mapped.sort((a, b) => (b.responseRatePct ?? -1) - (a.responseRatePct ?? -1));
       case 'price_asc':
         return mapped.sort(byPrice);
       case 'price_desc':

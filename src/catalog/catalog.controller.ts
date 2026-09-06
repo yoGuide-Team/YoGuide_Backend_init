@@ -204,6 +204,8 @@ export class CatalogController {
           include: { user: { select: { id: true, fullName: true, profileImage: true } } },
         },
         chefProfile: { select: { id: true } },
+        availability: { where: { isActive: true }, select: { weekday: true } },
+        bookings: { select: { status: true } },
         _count: { select: { reviews: true, bookings: true } },
       },
     });
@@ -216,39 +218,34 @@ export class CatalogController {
     const ratings = guide.reviews.map((r) => r.starRating);
     const rating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
     const isChef = Boolean(guide.chefProfile);
+    // Real completion/response figures, counted from this guide's own
+    // bookings. city, responseRatePct and bio were previously hardcoded
+    // identically for every guide; GuideProfile now carries real columns.
+    const handled = guide.bookings.filter((b) => b.status !== 'PENDING').length;
+    const responseRatePct = guide.bookings.length
+      ? Math.round((handled / guide.bookings.length) * 100)
+      : null;
+
     return {
       ...guide,
       fullName: guide.user.fullName,
       avatarUrl: guide.user.profileImage,
       emoji: isChef ? '👨‍🍳' : '🧭',
-      // GuideProfile has no city column yet — every guide reports the same
-      // placeholder, matching AppCompatController.listGuides()'s existing
-      // stub rather than inventing a differently-wrong value here.
-      city: 'kigali',
+      city: guide.city,
       rating: Math.round(rating * 10) / 10,
       reviewCount: guide._count.reviews,
-      toursCompleted: guide._count.bookings,
-      responseRatePct: 95,
+      toursCompleted: guide.bookings.filter((b) => b.status === 'COMPLETED').length,
+      responseRatePct,
+      isVerified: guide.isVerified,
+      isAvailable: guide.availability.length > 0,
       specialties: isChef ? ['#Food'] : [],
-      bio: guide.companyName ? `Guide at ${guide.companyName}` : '',
+      bio: guide.bio ?? (guide.companyName ? `Guide at ${guide.companyName}` : ''),
     };
   }
 
-  @Get('guides/:id/availability')
-  @ApiOperation({
-    summary: 'Get a guide\'s availability calendar',
-    description:
-      'Stub: returns the next 14 days as available, since there is no real calendar/blocked-dates model yet. Real per-day scheduling is a future addition.',
-  })
-  async getGuideAvailability(@Param('id') id: string) {
-    const guide = await this.prisma.guideProfile.findUnique({ where: { id }, select: { id: true } });
-    if (!guide) throw new NotFoundException(`Guide '${id}' not found.`);
-
-    const days = Array.from({ length: 14 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      return { date: d.toISOString().slice(0, 10), available: true };
-    });
-    return { guideId: id, days };
-  }
+  // GET /guides/:id/availability moved to PublicAvailabilityController
+  // (src/availability/availability.controller.ts). The stub that used to
+  // live here reported the next 14 days as unconditionally available for
+  // every guide; it is now computed from the provider's real weekly
+  // schedule, blocked dates, and already-committed bookings.
 }

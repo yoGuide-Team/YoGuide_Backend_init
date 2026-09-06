@@ -19,6 +19,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import {
   ChangePasswordDto,
@@ -47,6 +48,7 @@ export class AuthController {
 
   constructor(private readonly auth: AuthService) {}
 
+  @Throttle({ default: { ttl: 3600_000, limit: 5 } })
   @Post('register')
   @ApiOperation({
     summary: 'Register a new tourist account',
@@ -59,6 +61,7 @@ export class AuthController {
     return this.auth.register(dto);
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @Post('verify-register-otp')
   @ApiOperation({ summary: 'Verify registration OTP' })
   @ApiOkResponse({ type: AuthSessionResponse })
@@ -67,6 +70,7 @@ export class AuthController {
     return this.auth.verifyRegisterOtp(dto.email, dto.code);
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 4 } })
   @Post('resend-otp')
   @ApiOperation({ summary: 'Resend verification OTP' })
   @ApiOkResponse({ description: 'Fresh verification code sent (or generic message).' })
@@ -74,6 +78,7 @@ export class AuthController {
     return this.auth.sendOtpByEmail(dto.email);
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @Post('login')
   @ApiOperation({
     summary: 'Login with email and password',
@@ -167,6 +172,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 4 } })
   @Post('forgot-password')
   @ApiOperation({
     summary: 'Request password reset OTP',
@@ -178,6 +184,7 @@ export class AuthController {
     return this.auth.forgotPassword(dto.email);
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 10 } })
   @Post('verify-reset-otp')
   @ApiOperation({
     summary: 'Verify password reset OTP',
@@ -190,6 +197,7 @@ export class AuthController {
     return this.auth.verifyResetOtp(dto.email, dto.code);
   }
 
+  @Throttle({ default: { ttl: 900_000, limit: 6 } })
   @Post('reset-password')
   @ApiOperation({
     summary: 'Set new password after OTP verification',

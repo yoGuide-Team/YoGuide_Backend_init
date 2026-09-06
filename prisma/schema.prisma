@@ -36,8 +36,17 @@ enum MediaType {
 
 enum PaymentStatus {
   PENDING
+  /// Handed off to the payment provider; awaiting a verified result. The
+  /// backend polls the provider for the authoritative outcome — a client
+  /// can never move a payment out of this state.
+  PROCESSING
   SUCCESSFUL
   FAILED
+  CANCELLED
+  /// Provider never returned a terminal result before the deadline.
+  EXPIRED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum PaymentMethod {
@@ -49,10 +58,39 @@ enum PaymentMethod {
 
 enum BookingStatus {
   PENDING
+  /// Payment handed off to the provider and not yet verified. The slot is
+  /// held during this window so a second customer cannot take it.
+  PROCESSING
   CONFIRMED
   DECLINED
   CANCELLED
   COMPLETED
+  /// Held slot released because payment was never completed in time.
+  EXPIRED
+}
+
+/// Lifecycle of a provider (guide / tour company / gastronomy) application
+/// submitted for admin review. Mirrors the existing hotel apply → verify
+/// flow (POST /hotel/apply, POST /admin/hotels/:id/verify).
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  SUCCESSFUL
+  FAILED
+  CANCELLED
 }
 
 enum Language {
@@ -85,6 +123,16 @@ model User {
   otpExpiresAt           DateTime?
   passwordResetToken     String?
   passwordResetExpiresAt DateTime?
+  /// Single-use account-activation token, stored as a SHA-256 hash — set
+  /// when an admin approves a provider application. The plaintext token
+  /// only ever exists inside the activation email. No password is ever
+  /// emailed; the applicant sets their own via POST /auth/activate.
+  activationTokenHash    String?
+  activationExpiresAt    DateTime?
+  /// True until the user has completed activation and chosen a password.
+  /// Login is refused while this is set, so a provisioned-but-unclaimed
+  /// account cannot be used.
+  mustSetPassword        Boolean             @default(false)
   arrivalDate            DateTime?
   departureDate          DateTime?
   defaultLanguage        Language?
@@ -109,6 +157,10 @@ model User {
   esimOrders             EsimOrder[]
   cards                  Card[]
   cardTransactions       CardTransaction[]
+  reviewedApplications   GuideApplication[]  @relation("ApplicationReviewer")
+  createdFromApplication GuideApplication[]  @relation("ApplicationCreatedUser")
+  refundsRequested       Refund[]            @relation("RefundRequestedBy")
+  payoutsRequested       Payout[]            @relation("PayoutRequestedBy")
   // KYC gate for yoEcoPay/Wallet — reviewed by an admin, see
   // src/me/me-identity-verification.controller.ts.
   identityStatus          IdentityStatus @default(NONE)
@@ -170,11 +222,148 @@ model GuideProfile {
   /// read-only until existing rows are confirmed backfilled into
   /// ChefProfile, then dropped in a follow-up migration.
   gastronomy    Json?
+  /// Admin-controlled verification state. Was previously hardcoded `true`
+  /// in the public /guides mappers regardless of any real review — this is
+  /// now the single source of truth for that flag.
+  isVerified    Boolean        @default(false)
+  verifiedAt    DateTime?
+  /// Real values for fields the public mappers used to hardcode
+  /// (city: 'kigali', bio derived from companyName).
+  city          String?
+  bio           String?
+  /// Guests this provider can serve per day when no per-day override
+  /// exists on ProviderAvailability. Enforced by AvailabilityService.
+  dailyCapacity Int            @default(1)
+
+  // ── Payout details ─────────────────────────────────────────────
+  //
+  // Where this provider's money actually goes. Held server-side only:
+  // the app never sends a payout destination, it names a provider and the
+  // server resolves the number. Before this existed, the one payout route
+  // in the system paid a single hardcoded phone number baked into the
+  // Cloudflare worker.
+
+  /// Short, public, human-typeable payment code — the same idea as
+  /// `Hotel.code`, and what a provider's QR encodes. Safe to display;
+  /// resolving it reveals only a display name and a masked number.
+  paymentCode      String?  @unique
+  /// Mobile-money number that receives payouts, in local format. Never
+  /// returned to a client in full — see maskMsisdn().
+  payoutMsisdn     String?
+  /// Account-holder name the telecom expects for the payout.
+  payoutName       String?
+  /// XentriPay telecom provider id (e.g. MTN / Airtel). Null falls back to
+  /// PAYOUT_DEFAULT_TELECOM_ID.
+  payoutTelecomId  String?
+  /// Set once an admin has checked the payout number belongs to this
+  /// provider. Payouts are refused unless this is true, so a typo or a
+  /// hijacked profile cannot silently redirect money.
+  payoutVerified   Boolean  @default(false)
+
+  payouts       Payout[]
   chefProfile   ChefProfile?
   experiences   GuideExperience[]
   reviews       Review[]
   vehicles      GuideVehicle[]
   bookings      Booking[]
+  packages      Package[]              @relation("PackageOwner")
+  tourTypes     TourType[]             @relation("TourTypeOwner")
+  availability  ProviderAvailability[]
+  blockedDates  AvailabilityException[]
+  application   GuideApplication?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+
+  @@index([isVerified])
+}
+
+/// A provider's recurring weekly availability. One row per weekday the
+/// provider works; a weekday with no row is treated as unavailable. Kept
+/// deliberately simple (weekday + open/close + capacity) rather than a
+/// full calendar — AvailabilityException handles one-off deviations.
+model ProviderAvailability {
+  id         String       @id @default(uuid())
+  guideId    String
+  guide      GuideProfile @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  /// 0 = Sunday … 6 = Saturday, matching JavaScript's Date.getDay().
+  weekday    Int
+  /// Local wall-clock times as "HH:mm". Null start/end means "all day".
+  startTime  String?
+  endTime    String?
+  /// Guests bookable on this weekday. Null falls back to
+  /// GuideProfile.dailyCapacity.
+  capacity   Int?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([guideId, weekday])
+  @@index([guideId])
+}
+
+/// A one-off override for a specific date — either a blackout (holiday,
+/// already-committed trip) or extra capacity. Takes precedence over the
+/// weekly ProviderAvailability row for that date.
+model AvailabilityException {
+  id        String       @id @default(uuid())
+  guideId   String
+  guide     GuideProfile @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  /// Date only, stored at UTC midnight — compare with startOfUtcDay().
+  date      DateTime
+  /// true = the provider is unavailable all day, whatever the weekly rule says.
+  isBlocked Boolean      @default(true)
+  /// When isBlocked is false, overrides capacity for this date only.
+  capacity  Int?
+  reason    String?
+  createdAt DateTime     @default(now())
+
+  @@unique([guideId, date])
+  @@index([guideId])
+  @@index([date])
+}
+
+/// A provider's application to join the platform, reviewed by an admin.
+/// Mirrors the existing hotel apply → verify flow. On approval the backend
+/// provisions the User + GuideProfile and emails a single-use activation
+/// link — it never emails a password (see AccountProvisioningService).
+model GuideApplication {
+  id             String            @id @default(uuid())
+  /// Applicant contact details. Deliberately not a User relation: an
+  /// applicant has no account until an admin approves them.
+  fullName       String
+  email          String
+  phone          String?
+  nationality    String?
+  guideType      GuideType         @default(INDIVIDUAL)
+  companyName    String?
+  city           String?
+  bio            String?
+  languages      Language[]        @default([])
+  /// Uploaded licence / ID / certification URLs from POST /files/sign-upload.
+  documentUrls   String[]          @default([])
+  /// Set when the applicant intends to offer gastronomy experiences, so
+  /// approval can provision the ChefProfile alongside the GuideProfile.
+  wantsGastronomy Boolean          @default(false)
+  status         ApplicationStatus @default(PENDING)
+  reviewedById   String?
+  reviewedBy     User?             @relation("ApplicationReviewer", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  rejectionReason String?
+  /// Populated on approval — links the application to what it created.
+  createdUserId  String?
+  createdUser    User?             @relation("ApplicationCreatedUser", fields: [createdUserId], references: [id])
+  guideId        String?           @unique
+  guide          GuideProfile?     @relation(fields: [guideId], references: [id])
+  /// Approval-email audit trail (Phase 14 requires recording delivery).
+  approvalEmailSentAt DateTime?
+  approvalEmailStatus String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([email, status])
+  @@index([status])
+  @@index([reviewedById])
+  @@index([createdUserId])
 }
 
 /// A showcased experience on a guide's profile (any guide type, not just
@@ -300,9 +489,17 @@ model TourType {
   regionId String
   region   Region    @relation(fields: [regionId], references: [id])
   name     String
+  /// The provider that created this tour type. NULL means platform-owned
+  /// (admin-managed) — that is what every row created before provider
+  /// ownership existed is, and only admins may edit those. A non-null
+  /// owner may be edited and deleted only by that provider or an admin.
+  /// See ProviderOwnershipService.assertCanMutateTourType().
+  ownerId  String?
+  owner    GuideProfile? @relation("TourTypeOwner", fields: [ownerId], references: [id])
   packages Package[]
 
   @@index([regionId])
+  @@index([ownerId])
 }
 
 model Package {
@@ -318,6 +515,18 @@ model Package {
   isCustom      Boolean        @default(false)
   createdById   String?
   createdBy     User?          @relation("UserCustomPackages", fields: [createdById], references: [id])
+  /// The provider that owns this package. NULL means platform-owned
+  /// (admin-managed) — the state every pre-existing row is backfilled to.
+  /// Distinct from `createdById`, which is the *tourist* who composed a
+  /// custom package; the two are never both set.
+  ownerId       String?
+  owner         GuideProfile?  @relation("PackageOwner", fields: [ownerId], references: [id])
+  /// Set false to withdraw a package from the public catalog without
+  /// deleting it (and without orphaning historical bookings).
+  isActive      Boolean        @default(true)
+  /// Maximum guests per booking of this package. Null = no package-level
+  /// cap; the provider's daily capacity still applies.
+  maxGuests     Int?
   tours         PackageTour[]
   media         PackageMedia[]
   reviews       Review[]
@@ -326,6 +535,7 @@ model Package {
 
   @@index([tourTypeId])
   @@index([createdById])
+  @@index([ownerId])
 }
 
 model PackageTour {
@@ -407,23 +617,47 @@ model Booking {
   hotelId         String?
   hotel           Hotel?               @relation(fields: [hotelId], references: [id])
   scheduleDate    DateTime
+  /// Requested start time as local wall-clock "HH:mm", validated against
+  /// the provider's ProviderAvailability window. Null for legacy rows and
+  /// for all-day experiences.
+  startTime       String?
   pickupLocation  String?
   /// Gastronomy-only: number of diners. Null for tour/vehicle bookings.
   partySize       Int?
+  /// Guests on this booking for capacity purposes, for every booking type.
+  /// Gastronomy bookings set this to the same value as partySize; tour
+  /// bookings previously had nowhere to record a guest count at all.
+  guests          Int                 @default(1)
+  /// Human-readable booking reference shown on the ticket, e.g. "YG-4KQ2P8B1".
+  /// Generated server-side with generateShortCode(); never client-supplied.
+  reference       String?             @unique
   selectedCourses BookingCourse[]
   totalDue        Decimal             @db.Decimal(12, 2)
+  currency        String              @default("USD")
   status          BookingStatus       @default(PENDING)
+  /// While a booking is PENDING/PROCESSING it holds its capacity slot until
+  /// this moment; a lapsed hold is swept to EXPIRED and the slot freed.
+  holdExpiresAt   DateTime?
   paymentMethod   PaymentMethod?
   notes           String?
+  cancelledAt     DateTime?
+  cancellationReason String?
   payment         Payment?
+  refunds         Refund[]
   review          Review?
   walletEntries   WalletTransaction[]
   createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @default(now()) @updatedAt
 
   @@index([userId])
   @@index([packageId])
   @@index([vehicleId])
   @@index([guideId])
+  @@index([hotelId])
+  /// Backs the availability/conflict query, which counts committed guests
+  /// for one provider on one date.
+  @@index([guideId, scheduleDate, status])
+  @@index([status, holdExpiresAt])
 }
 
 /// Which menu items a diner picked for a gastronomy booking. Mirrors the
@@ -521,15 +755,163 @@ model HotelRoom {
   @@index([hotelId])
 }
 
+/// One payment attempt against a booking. `status` is written ONLY by the
+/// server after verifying the outcome with the payment provider — see
+/// PaymentsService.verify(). No client-supplied status is ever trusted;
+/// the old POST /bookings/:id/payment route that accepted one is gone.
 model Payment {
   id             String        @id @default(uuid())
   bookingId      String        @unique
   booking        Booking       @relation(fields: [bookingId], references: [id])
   amount         Decimal       @db.Decimal(12, 2)
-  status         PaymentStatus
+  currency       String        @default("USD")
+  status         PaymentStatus @default(PENDING)
   paymentMethod  PaymentMethod
   transactionRef String?
+  /// Which provider settled this — "xentripay" via the yoEcoPay worker,
+  /// "wallet" for internal balance, "cash" for pay-on-arrival.
+  provider       String?
+  /// The provider's own session/transaction id, used to poll for the
+  /// authoritative result. Unique so one provider session can never be
+  /// attached to two bookings.
+  providerRef    String?       @unique
+  /// Verbatim last status string from the provider, kept for support and
+  /// reconciliation even when it maps onto the same PaymentStatus.
+  providerStatus String?
+  /// Caller-supplied key making payment initiation safe to retry — a
+  /// repeat with the same key returns the original attempt instead of
+  /// charging again.
+  idempotencyKey String?       @unique
+  /// Set the moment the server confirmed the outcome with the provider.
+  /// A SUCCESSFUL payment with a null verifiedAt is a bug, not a payment.
+  verifiedAt     DateTime?
+  /// Amount already refunded, in the same currency. Drives
+  /// PARTIALLY_REFUNDED vs REFUNDED.
+  refundedAmount Decimal       @default(0) @db.Decimal(12, 2)
+  failureReason  String?
+  attempts       PaymentAttempt[]
+  refunds        Refund[]
   createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+
+  @@index([status])
+  @@index([provider])
+}
+
+/// Append-only audit trail: every provider interaction on a payment, kept
+/// so a disputed charge can be reconstructed. Never updated, only inserted.
+model PaymentAttempt {
+  id           String   @id @default(uuid())
+  paymentId    String
+  payment      Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  /// "initiate" | "verify" | "webhook" | "refund"
+  action       String
+  providerRef  String?
+  /// Provider status string as received.
+  resultStatus String?
+  httpStatus   Int?
+  /// Provider response body, truncated. Must never contain card data — the
+  /// provider is not sent any, and only its JSON reply is stored.
+  responseBody String?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([paymentId])
+  @@index([createdAt])
+}
+
+/// Money sent *out* to a provider — a guide, chef, tour company or artisan.
+///
+/// Every payout is a row here before the provider is contacted, so there is
+/// no such thing as an untracked disbursement. The destination number is
+/// resolved server-side from the provider's profile and recorded as it was
+/// at the time, so changing a profile later cannot rewrite history.
+///
+/// This replaces a flow where the mobile app called the payout worker
+/// directly with a hardcoded product id, and the worker paid a phone number
+/// baked into its own source.
+model Payout {
+  id             String       @id @default(uuid())
+  guideId        String
+  guide          GuideProfile @relation(fields: [guideId], references: [id])
+  /// Optional link to what is being paid for.
+  bookingId      String?
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       String       @default("RWF")
+  status         PayoutStatus @default(PENDING)
+  /// Destination as used at send time. Stored so a later profile edit does
+  /// not retroactively change where a past payout appears to have gone.
+  destinationMsisdn String
+  destinationName   String?
+  /// Our own reference, sent to the provider and used to poll status.
+  reference      String       @unique
+  providerRef    String?
+  providerStatus String?
+  failureReason  String?
+  /// Who authorised it. Null for system-initiated provider settlements.
+  requestedById  String?
+  requestedBy    User?        @relation("PayoutRequestedBy", fields: [requestedById], references: [id])
+
+  // ── Collection leg ─────────────────────────────────────────────
+  //
+  // When a traveller pays a provider directly (scanning their code), the
+  // money has to be collected from the payer before it can be sent on.
+  // These fields track that first leg. They are null for admin-initiated
+  // settlements, where yoGuide already holds the funds.
+  //
+  // Keeping both legs on one row is what stops the old failure mode: the
+  // app used to fire a payout with no corresponding collection at all.
+
+  /// The traveller who paid.
+  payerUserId       String?
+  /// Provider session id for the collection, polled for the real outcome.
+  collectionRef     String?  @unique
+  /// Verbatim provider status for the collection leg.
+  collectionStatus  String?
+  /// Set only once the collection was verified with the provider. A payout
+  /// is never sent before this is non-null.
+  collectedAt       DateTime?
+  note           String?
+  processedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@index([guideId])
+  @@index([status])
+  @@index([bookingId])
+  @@index([requestedById])
+  @@index([payerUserId])
+}
+
+/// A refund against a booking's payment. Eligibility and amount are decided
+/// server-side by RefundService from the cancellation policy — the client
+/// never supplies an amount or asserts eligibility.
+model Refund {
+  id             String       @id @default(uuid())
+  bookingId      String
+  booking        Booking      @relation(fields: [bookingId], references: [id])
+  paymentId      String?
+  payment        Payment?     @relation(fields: [paymentId], references: [id])
+  amount         Decimal      @db.Decimal(12, 2)
+  currency       String       @default("USD")
+  status         RefundStatus @default(PENDING)
+  /// Which policy rule produced this amount, e.g. "full_over_72h",
+  /// "half_24_to_72h", "none_under_24h", "provider_declined".
+  policyRule     String?
+  reason         String?
+  requestedById  String?
+  requestedBy    User?        @relation("RefundRequestedBy", fields: [requestedById], references: [id])
+  providerRef    String?
+  providerStatus String?
+  processedAt    DateTime?
+  failureReason  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@index([bookingId])
+  @@index([paymentId])
+  @@index([status])
+  @@index([requestedById])
 }
 
 /// A 1:1 conversation between two users (tourist <-> guide today, but not

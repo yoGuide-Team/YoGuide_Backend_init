@@ -198,4 +198,163 @@ export class MailService {
       `,
     });
   }
+
+  // ── Provider application lifecycle ─────────────────────────
+
+  /// Sent when an admin approves a provider application.
+  ///
+  /// SECURITY: this deliberately carries a single-use, time-limited
+  /// activation link and **never a password**. The applicant chooses their
+  /// own password through the link; no credential ever travels by email.
+  async sendGuideApprovalEmail(
+    email: string,
+    params: { fullName: string; activationUrl: string; expiresInHours: number },
+  ) {
+    await this.sendEmail({
+      from: this.resend ? this.resendFrom : undefined,
+      to: email,
+      subject: 'Your yoGuide provider application has been approved',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+          <h2>Welcome to yoGuide, ${escapeHtml(params.fullName)}</h2>
+          <p>Your application has been approved and your provider account is ready.</p>
+          <p>Set your password to activate it:</p>
+          <p style="margin: 24px 0;">
+            <a href="${params.activationUrl}"
+               style="background:#0C8A5B;color:#fff;padding:14px 28px;border-radius:8px;
+                      text-decoration:none;font-weight:bold;display:inline-block;">
+              Activate my account
+            </a>
+          </p>
+          <p style="color:#555;font-size:14px;">
+            This link can be used once and expires in ${params.expiresInHours} hours.
+            If it expires, use “Forgot password” on the sign-in screen to get a new one.
+          </p>
+          <p style="color:#555;font-size:14px;">
+            We will never email you a password. If you did not apply to yoGuide, ignore this message.
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  async sendApplicationRejectedEmail(
+    email: string,
+    params: { fullName: string; reason?: string | null },
+  ) {
+    await this.sendEmail({
+      from: this.resend ? this.resendFrom : undefined,
+      to: email,
+      subject: 'Update on your yoGuide provider application',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+          <h2>Hello ${escapeHtml(params.fullName)}</h2>
+          <p>Thank you for applying to join yoGuide. After review, we are not able to
+             approve your application at this time.</p>
+          ${params.reason ? `<p><strong>Reason:</strong> ${escapeHtml(params.reason)}</p>` : ''}
+          <p>You are welcome to apply again once the points above are addressed.</p>
+        </div>
+      `,
+    });
+  }
+
+  // ── Booking lifecycle ──────────────────────────────────────
+
+  async sendBookingConfirmationEmail(
+    email: string,
+    params: {
+      customerName: string;
+      experience: string;
+      date: string;
+      reference: string;
+      total: string;
+    },
+  ) {
+    await this.sendEmail({
+      from: this.resend ? this.resendFrom : undefined,
+      to: email,
+      subject: `Your yoGuide booking is confirmed — ${params.reference}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+          <h2>You're booked, ${escapeHtml(params.customerName)}</h2>
+          <p>Your payment is confirmed. Here are the details:</p>
+          <table style="border-collapse:collapse;margin:16px 0;">
+            ${row('Experience', params.experience)}
+            ${row('Date', params.date)}
+            ${row('Reference', params.reference)}
+            ${row('Total paid', params.total)}
+          </table>
+          <p>Show your reference to your host on the day. Enjoy Rwanda.</p>
+        </div>
+      `,
+    });
+  }
+
+  async sendBookingCancelledEmail(
+    email: string,
+    params: {
+      customerName: string;
+      experience: string;
+      date: string;
+      reference: string;
+      refundSummary: string;
+    },
+  ) {
+    await this.sendEmail({
+      from: this.resend ? this.resendFrom : undefined,
+      to: email,
+      subject: `Your yoGuide booking was cancelled — ${params.reference}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+          <h2>Booking cancelled</h2>
+          <p>Hello ${escapeHtml(params.customerName)}, your booking has been cancelled.</p>
+          <table style="border-collapse:collapse;margin:16px 0;">
+            ${row('Experience', params.experience)}
+            ${row('Date', params.date)}
+            ${row('Reference', params.reference)}
+            ${row('Refund', params.refundSummary)}
+          </table>
+        </div>
+      `,
+    });
+  }
+
+  async sendRefundIssuedEmail(
+    email: string,
+    params: { customerName: string; amount: string; reference: string },
+  ) {
+    await this.sendEmail({
+      from: this.resend ? this.resendFrom : undefined,
+      to: email,
+      subject: `Your yoGuide refund is on its way — ${params.reference}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; padding: 20px;">
+          <h2>Refund issued</h2>
+          <p>Hello ${escapeHtml(params.customerName)}, we have issued a refund of
+             <strong>${escapeHtml(params.amount)}</strong> for booking
+             ${escapeHtml(params.reference)}.</p>
+          <p>It can take a few business days to appear, depending on your payment method.</p>
+        </div>
+      `,
+    });
+  }
+}
+
+/// Minimal HTML escaping for values interpolated into email templates.
+/// Names, reasons and experience titles are user-supplied, so they must not
+/// be able to inject markup into an email we send on someone's behalf.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function row(label: string, value: string): string {
+  return `<tr>
+    <td style="padding:6px 16px 6px 0;color:#555;">${escapeHtml(label)}</td>
+    <td style="padding:6px 0;font-weight:bold;">${escapeHtml(value)}</td>
+  </tr>`;
 }

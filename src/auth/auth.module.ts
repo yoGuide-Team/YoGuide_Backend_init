@@ -21,7 +21,12 @@ import { PermissionsGuard } from './permissions.guard';
         return {
           secret,
           signOptions: {
-            expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '30d',
+            // Was '30d'. A month-long, non-revocable bearer token on an app
+            // that moves money is too long a window for a stolen device or
+            // leaked token. 7d keeps sessions comfortable without a refresh
+            // -token system, which does not exist yet; shorten further once
+            // refresh-token rotation is added.
+            expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d',
           },
         };
       },

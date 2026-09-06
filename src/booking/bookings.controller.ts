@@ -18,14 +18,21 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
-import { BookingStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/client';
+import { BookingStatus, PaymentMethod, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AvailabilityService } from '../availability/availability.service';
+import { BookingPaymentsService } from '../payments/booking-payments.service';
+import { RefundService } from '../payments/refund.service';
+import { NotificationsService, NotificationType } from '../notifications/notifications.service';
+import { generateShortCode } from '../common/short-code';
+import { isValidTimeString, startOfUtcDay } from '../common/dates';
 
 class CreateBookingDto {
   @IsString()
@@ -33,6 +40,20 @@ class CreateBookingDto {
 
   @IsDateString()
   scheduleDate!: string;
+
+  /// Local wall-clock start time, validated against the provider's
+  /// availability window for that weekday.
+  @IsOptional()
+  @IsString()
+  startTime?: string;
+
+  /// Guests on this booking. Drives capacity, and for gastronomy also
+  /// pricing (where it must equal partySize).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  guests?: number;
 
   // ── Tour/vehicle booking fields — required together for that path ──
   @IsOptional()
@@ -52,6 +73,7 @@ class CreateBookingDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   partySize?: number;
 
   @IsOptional()
@@ -65,19 +87,32 @@ class CreateBookingDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   notes?: string;
 }
 
-class RecordPaymentDto {
-  @IsEnum(PaymentStatus)
-  status!: PaymentStatus;
-
+class InitiatePaymentDto {
   @IsEnum(PaymentMethod)
   paymentMethod!: PaymentMethod;
 
+  /// Makes retrying safe — a repeat with the same key returns the original
+  /// attempt instead of opening a second checkout.
   @IsOptional()
   @IsString()
-  transactionRef?: string;
+  @MaxLength(120)
+  idempotencyKey?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  customerPhone?: string;
+}
+
+class CancelBookingDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }
 
 class CreateReviewDto {
@@ -88,10 +123,9 @@ class CreateReviewDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   message?: string;
 }
-
-const CANCELLABLE: BookingStatus[] = [BookingStatus.PENDING, BookingStatus.CONFIRMED];
 
 const BOOKING_INCLUDE = {
   package: { select: { id: true, name: true, durationHours: true, price: true, isCustom: true } },
@@ -116,21 +150,42 @@ const BOOKING_INCLUDE = {
 @Controller()
 @UseGuards(AuthGuard)
 export class BookingsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly availability: AvailabilityService,
+    private readonly payments: BookingPaymentsService,
+    private readonly refunds: RefundService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   @Post('bookings')
   @ApiOperation({
-    summary: 'Book a package or a gastronomy experience (price computed server-side)',
+    summary: 'Book a package or a gastronomy experience (price and availability decided server-side)',
     description:
-      "Two mutually-exclusive shapes, selected by whether partySize is present. Tour/vehicle: " +
-      "packageId + vehicleId + pickupLocation required, no partySize. Gastronomy: partySize " +
-      'required (+ optional selectedCourseIds), no packageId/vehicleId.',
+      'Two mutually-exclusive shapes, selected by whether partySize is present. Tour/vehicle: ' +
+      'packageId + vehicleId + pickupLocation required, no partySize. Gastronomy: partySize ' +
+      'required (+ optional selectedCourseIds), no packageId/vehicleId. ' +
+      'The provider’s availability and remaining capacity are checked inside a serializable ' +
+      'transaction, so concurrent requests cannot overbook the same date.',
   })
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateBookingDto) {
-    const scheduleDate = new Date(dto.scheduleDate);
-    if (scheduleDate.getTime() <= Date.now()) {
+    const scheduleDate = startOfUtcDay(dto.scheduleDate);
+    if (Number.isNaN(scheduleDate.getTime())) {
+      throw new BadRequestException('scheduleDate is not a valid date.');
+    }
+    if (new Date(dto.scheduleDate).getTime() <= Date.now()) {
       throw new BadRequestException('scheduleDate must be in the future.');
     }
+    if (dto.startTime && !isValidTimeString(dto.startTime)) {
+      throw new BadRequestException('startTime must be in HH:mm format.');
+    }
+    if (dto.partySize != null && dto.guests != null && dto.guests !== dto.partySize) {
+      throw new BadRequestException('guests and partySize must match for a gastronomy booking.');
+    }
+
+    // Free any slots whose payment window lapsed, so a stale hold does not
+    // block a legitimate booking.
+    await this.availability.expireLapsedHolds();
 
     const guide = await this.prisma.guideProfile.findUnique({
       where: { id: dto.guideId },
@@ -138,19 +193,71 @@ export class BookingsController {
     });
     if (!guide) throw new NotFoundException(`Guide '${dto.guideId}' not found.`);
 
-    if (dto.partySize != null) {
-      return this.createGastronomyBooking(user, dto, guide, scheduleDate);
-    }
-    return this.createTourBooking(user, dto, guide, scheduleDate);
+    const isGastronomy = dto.partySize != null;
+    const guests = isGastronomy ? dto.partySize! : (dto.guests ?? 1);
+
+    const priced = isGastronomy
+      ? await this.priceGastronomy(dto, guide)
+      : await this.priceTour(dto, user);
+
+    // Serializable: the capacity read and the booking write must be one
+    // atomic unit or two concurrent bookings can each see the last free
+    // seat. Postgres aborts the loser, which surfaces as a retryable error.
+    const booking = await this.prisma.$transaction(
+      async (tx) => {
+        await this.availability.assertBookable(tx, {
+          guideId: guide.id,
+          scheduleDate,
+          guests,
+          startTime: dto.startTime,
+        });
+
+        return tx.booking.create({
+          data: {
+            userId: user.id,
+            guideId: guide.id,
+            scheduleDate,
+            startTime: dto.startTime,
+            guests,
+            reference: `YG-${generateShortCode(8)}`,
+            totalDue: priced.totalDue,
+            currency: 'USD',
+            status: BookingStatus.PENDING,
+            paymentMethod: dto.paymentMethod,
+            notes: dto.notes,
+            // Hold the slot briefly even before payment starts, so a booking
+            // left unpaid does not occupy the date indefinitely.
+            holdExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+            ...(isGastronomy
+              ? {
+                  partySize: dto.partySize,
+                  selectedCourses: {
+                    create: priced.courseIds.map((courseId) => ({ courseId })),
+                  },
+                }
+              : {
+                  packageId: priced.packageId,
+                  vehicleId: priced.vehicleId,
+                  pickupLocation: dto.pickupLocation,
+                }),
+          },
+          include: BOOKING_INCLUDE,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 15000 },
+    );
+
+    await this.announceCreated(booking.id, guide.id, guide.userId);
+    return booking;
   }
 
-  private async createGastronomyBooking(
-    user: AuthenticatedUser,
+  // ── Pricing (server-side; a client-supplied price is never read) ──
+
+  private async priceGastronomy(
     dto: CreateBookingDto,
     guide: Prisma.GuideProfileGetPayload<{
       include: { chefProfile: { include: { priceTiers: true; courses: true } } };
     }>,
-    scheduleDate: Date,
   ) {
     if (dto.packageId || dto.vehicleId) {
       throw new BadRequestException('packageId/vehicleId are not used for gastronomy bookings.');
@@ -177,29 +284,15 @@ export class BookingsController {
       }
     }
 
-    const totalDue = tier.pricePerPersonUsd.mul(dto.partySize!);
-
-    return this.prisma.booking.create({
-      data: {
-        userId: user.id,
-        guideId: guide.id,
-        scheduleDate,
-        partySize: dto.partySize,
-        totalDue,
-        paymentMethod: dto.paymentMethod,
-        notes: dto.notes,
-        selectedCourses: { create: courseIds.map((courseId) => ({ courseId })) },
-      },
-      include: BOOKING_INCLUDE,
-    });
+    return {
+      totalDue: tier.pricePerPersonUsd.mul(dto.partySize!),
+      courseIds,
+      packageId: undefined as string | undefined,
+      vehicleId: undefined as string | undefined,
+    };
   }
 
-  private async createTourBooking(
-    user: AuthenticatedUser,
-    dto: CreateBookingDto,
-    guide: { id: string },
-    scheduleDate: Date,
-  ) {
+  private async priceTour(dto: CreateBookingDto, user: AuthenticatedUser) {
     if (!dto.packageId || !dto.vehicleId || !dto.pickupLocation) {
       throw new BadRequestException(
         'packageId, vehicleId and pickupLocation are required for tour bookings.',
@@ -210,26 +303,31 @@ export class BookingsController {
     if (!pkg || (pkg.isCustom && pkg.createdById !== user.id)) {
       throw new NotFoundException(`Package '${dto.packageId}' not found.`);
     }
+    if (!pkg.isActive) {
+      throw new BadRequestException('This package is no longer available for booking.');
+    }
+    const guests = dto.guests ?? 1;
+    if (pkg.maxGuests != null && guests > pkg.maxGuests) {
+      throw new BadRequestException(`This package takes at most ${pkg.maxGuests} guests.`);
+    }
+
     const vehicle = await this.prisma.vehicle.findUnique({ where: { id: dto.vehicleId } });
     if (!vehicle) throw new NotFoundException(`Vehicle '${dto.vehicleId}' not found.`);
+    if (guests > vehicle.seats) {
+      throw new BadRequestException(
+        `${vehicle.name} seats ${vehicle.seats}; you selected ${guests} guests.`,
+      );
+    }
 
-    const totalDue = pkg.price.add(this.vehicleCost(vehicle, pkg.durationHours));
-
-    return this.prisma.booking.create({
-      data: {
-        userId: user.id,
-        packageId: pkg.id,
-        vehicleId: vehicle.id,
-        guideId: guide.id,
-        scheduleDate,
-        pickupLocation: dto.pickupLocation,
-        totalDue,
-        paymentMethod: dto.paymentMethod,
-        notes: dto.notes,
-      },
-      include: BOOKING_INCLUDE,
-    });
+    return {
+      totalDue: pkg.price.add(this.vehicleCost(vehicle, pkg.durationHours)),
+      courseIds: [] as string[],
+      packageId: pkg.id as string | undefined,
+      vehicleId: vehicle.id as string | undefined,
+    };
   }
+
+  // ── Reads (owner-scoped) ───────────────────────────────────
 
   @Get('me/bookings')
   @ApiOperation({ summary: 'List my bookings' })
@@ -249,52 +347,97 @@ export class BookingsController {
   async getMine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     const booking = await this.prisma.booking.findFirst({
       where: { id, userId: user.id },
-      include: { ...BOOKING_INCLUDE, walletEntries: true },
+      include: { ...BOOKING_INCLUDE, walletEntries: true, refunds: true },
     });
     if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
     return booking;
   }
 
-  @Post('bookings/:id/cancel')
-  @ApiOperation({ summary: 'Cancel my booking' })
-  async cancel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    const booking = await this.prisma.booking.findFirst({ where: { id, userId: user.id } });
-    if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
-    if (!CANCELLABLE.includes(booking.status)) {
-      throw new BadRequestException(`A ${booking.status} booking cannot be cancelled.`);
-    }
-    return this.prisma.booking.update({
-      where: { id },
-      data: { status: BookingStatus.CANCELLED },
-      include: BOOKING_INCLUDE,
+  // ── Payment (server-verified only) ─────────────────────────
+
+  @Post('bookings/:id/payment/initiate')
+  @ApiOperation({
+    summary: 'Start paying for my booking',
+    description:
+      'Opens a checkout session with the payment provider and returns its redirect URL. ' +
+      'The booking is held as PROCESSING while payment is in flight. This endpoint cannot ' +
+      'mark a booking paid — only a verified provider result can.',
+  })
+  initiatePayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: InitiatePaymentDto,
+  ) {
+    return this.payments.initiate({
+      userId: user.id,
+      bookingId: id,
+      method: dto.paymentMethod,
+      idempotencyKey: dto.idempotencyKey,
+      customerPhone: dto.customerPhone,
     });
   }
 
-  @Post('bookings/:id/payment')
-  @ApiOperation({ summary: 'Record the result of an online payment attempt for my booking' })
-  async recordPayment(
+  @Post('bookings/:id/payment/verify')
+  @ApiOperation({
+    summary: 'Ask the server to check this payment with the provider',
+    description:
+      'The server reads the authoritative status from the payment provider and applies it. ' +
+      'Safe to poll. The request body carries no status — the client cannot influence the outcome.',
+  })
+  verifyPayment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.payments.verify(id, user.id);
+  }
+
+  @Get('bookings/:id/payment')
+  @ApiOperation({ summary: 'Current payment state for my booking' })
+  async getPayment(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id, userId: user.id },
+      include: { payment: true },
+    });
+    if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
+    if (!booking.payment) return { bookingId: id, status: null, message: 'No payment started.' };
+    return booking.payment;
+  }
+
+  // ── Cancellation & refunds ─────────────────────────────────
+
+  @Get('bookings/:id/refund-quote')
+  @ApiOperation({
+    summary: 'What would be refunded if I cancelled now',
+    description: 'Read-only. Evaluated server-side against the cancellation policy.',
+  })
+  async refundQuote(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const quote = await this.refunds.quote(id, user.id);
+    return { ...quote, amount: quote.amount.toString() };
+  }
+
+  @Post('bookings/:id/cancel')
+  @ApiOperation({
+    summary: 'Cancel my booking',
+    description:
+      'Applies the cancellation policy server-side, records any refund due, and frees the ' +
+      'provider’s capacity for that date.',
+  })
+  async cancel(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() dto: RecordPaymentDto,
+    @Body() dto: CancelBookingDto,
   ) {
-    const booking = await this.prisma.booking.findFirst({ where: { id, userId: user.id } });
-    if (!booking) throw new NotFoundException(`Booking '${id}' not found.`);
-    return this.prisma.payment.upsert({
-      where: { bookingId: id },
-      create: {
-        bookingId: id,
-        amount: booking.totalDue,
-        status: dto.status,
-        paymentMethod: dto.paymentMethod,
-        transactionRef: dto.transactionRef,
-      },
-      update: {
-        status: dto.status,
-        paymentMethod: dto.paymentMethod,
-        transactionRef: dto.transactionRef,
-      },
+    const result = await this.refunds.cancelBooking({
+      bookingId: id,
+      userId: user.id,
+      requestedById: user.id,
+      reason: dto?.reason,
     });
+    return {
+      booking: result.booking,
+      refund: result.refund,
+      policy: { rule: result.quote.rule, refundPercent: result.quote.refundPercent },
+    };
   }
+
+  // ── Reviews ────────────────────────────────────────────────
 
   @Post('bookings/:id/review')
   @ApiOperation({ summary: 'Leave a review for one of my completed bookings' })
@@ -320,6 +463,43 @@ export class BookingsController {
         message: dto.message,
       },
     });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  private async announceCreated(bookingId: string, guideId: string, guideUserId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        user: { select: { id: true, fullName: true } },
+        package: { select: { name: true } },
+      },
+    });
+    if (!booking) return;
+    const label = booking.package?.name ?? 'a yoGuide experience';
+    const when = booking.scheduleDate.toISOString().slice(0, 10);
+
+    await this.notifications.notifyMany([
+      {
+        userId: booking.userId,
+        type: NotificationType.BookingCreated,
+        title: 'Booking created',
+        message: `Your booking for ${label} on ${when} is held. Complete payment to confirm it.`,
+        transactionId: booking.id,
+        actionLabel: 'Pay now',
+        actionUrl: `/bookings/${booking.id}`,
+      },
+      {
+        // The provider's own user id — never a broadcast to all providers.
+        userId: guideUserId,
+        type: NotificationType.ProviderNewBooking,
+        title: 'New booking request',
+        message: `${booking.user.fullName ?? 'A customer'} requested ${label} on ${when}.`,
+        transactionId: booking.id,
+        actionLabel: 'Review request',
+        actionUrl: `/guide/bookings/${booking.id}`,
+      },
+    ]);
   }
 
   /// Day rate applies per full 24h; the remainder is billed hourly but

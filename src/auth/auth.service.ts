@@ -108,6 +108,17 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password.');
     }
 
+    // A provisioned-but-unclaimed provider account (created when an admin
+    // approved an application) has an unusable random password and must be
+    // activated through the emailed link before it can sign in. Refusing
+    // here is what stops such an account being usable before its owner
+    // has proved they control the mailbox.
+    if (user.mustSetPassword) {
+      throw new UnauthorizedException(
+        'ACCOUNT_NOT_ACTIVATED: Use the activation link we emailed you to set your password.',
+      );
+    }
+
     if (!user.emailVerified) {
       await this.resendOtpForUser(user);
       throw new UnauthorizedException(

@@ -13,7 +13,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "test:api": "node test/api-e2e.mjs",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "test:isolation": "node test/isolation-e2e.mjs",
+    "test:all": "node test/isolation-e2e.mjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -27,6 +29,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/swagger": "^7.4.2",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^6.19.3",
     "@prisma/config": "^7.8.0",
     "@supabase/ssr": "^0.12.0",
@@ -39,6 +42,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "google-auth-library": "^10.9.0",
+    "helmet": "^8.3.0",
     "nodemailer": "^9.0.3",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.18.0",

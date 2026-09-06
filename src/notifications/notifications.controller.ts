@@ -1,9 +1,10 @@
-import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { NotificationsService } from './notifications.service';
 
 /// Read surface for the in-app notification feed. Nothing produces rows
 /// here yet — other modules emitting a Notification on real events
@@ -14,7 +15,10 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 @Controller('notifications')
 @UseGuards(AuthGuard)
 export class NotificationsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'My notifications, most recent first' })
@@ -26,6 +30,12 @@ export class NotificationsController {
     });
   }
 
+  @Get('unread-count')
+  @ApiOperation({ summary: 'How many of my notifications are unread' })
+  async unreadCount(@CurrentUser() user: AuthenticatedUser) {
+    return { count: await this.notifications.unreadCount(user.id) };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get one of my notifications by id' })
   async get(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
@@ -34,5 +44,21 @@ export class NotificationsController {
     });
     if (!notification) throw new NotFoundException(`Notification '${id}' not found.`);
     return notification;
+  }
+
+  @Patch(':id/read')
+  @ApiOperation({ summary: 'Mark one of my notifications as read' })
+  async markRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    // Scoped by userId inside the service, so this can never mark someone
+    // else's notification read even with a valid id.
+    const ok = await this.notifications.markRead(user.id, id);
+    if (!ok) throw new NotFoundException(`Notification '${id}' not found.`);
+    return { ok: true };
+  }
+
+  @Patch('read-all')
+  @ApiOperation({ summary: 'Mark all my notifications as read' })
+  async markAllRead(@CurrentUser() user: AuthenticatedUser) {
+    return { updated: await this.notifications.markAllRead(user.id) };
   }
 }
