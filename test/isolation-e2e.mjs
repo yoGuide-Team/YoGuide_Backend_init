@@ -386,11 +386,12 @@ await expect('cancellation freed the capacity', 'GET', `/guides/${guideAId}/avai
 
 // ── Booking lifecycle (Phase 9) ──────────────────────────────
 //
-// Regression cover for the transitions the older api-e2e.mjs suite
-// exercised. That suite currently cannot run: it depends on fixture ids
-// ('seed-package-kigali-classic', 'seed-vehicle-evcar') that no seed script
-// in this repo creates any more, so it aborts during setup. These
-// assertions re-cover the same lifecycle rules against fixtures we own.
+// Regression cover for the transitions the api-e2e.mjs suite exercises
+// too. api-e2e.mjs now resolves its package/vehicle fixtures dynamically
+// from the live catalog (the old hardcoded 'seed-package-kigali-classic' /
+// 'seed-vehicle-evcar' ids no longer exist), so both suites run against
+// any seeded database. These assertions re-cover the same lifecycle rules
+// against fixtures we own here.
 
 console.log('\nBooking lifecycle');
 const lifecycleDate = new Date(Date.now() + 12 * 24 * 3600 * 1000).toISOString().slice(0, 10);

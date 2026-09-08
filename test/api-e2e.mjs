@@ -53,8 +53,43 @@ async function expect(name, method, path, opts, wantStatus, verify) {
   return body;
 }
 
-const SEED_PACKAGE = 'seed-package-kigali-classic';
-const SEED_VEHICLE = 'seed-vehicle-evcar';
+// ── Fixtures ─────────────────────────────────────────────────
+// The seed no longer creates fixed ids, so resolve a real package (one
+// with tours + a region, which the detail assertions need) and a real
+// vehicle from the live catalog instead of hardcoding ids.
+
+async function resolveSeedPackage() {
+  const list = await req('GET', '/catalog/packages');
+  const candidates = Array.isArray(list.body) ? list.body : [];
+  if (!candidates.length) throw new Error('No packages seeded; cannot run the suite.');
+  for (const p of candidates) {
+    const detail = await req('GET', `/catalog/packages/${p.id}`);
+    const d = detail.body;
+    if (
+      Array.isArray(d?.tours) &&
+      d.tours.length > 0 &&
+      d.tourType?.region &&
+      d.isCustom !== true
+    ) {
+      return d;
+    }
+  }
+  throw new Error('No seeded package with tours + region found.');
+}
+
+const seedPackageDetail = await resolveSeedPackage();
+const SEED_PACKAGE = seedPackageDetail.id;
+const SEED_PACKAGE_NAME = seedPackageDetail.name;
+
+const vehicleList = await req('GET', '/catalog/vehicles');
+const vehicles = Array.isArray(vehicleList.body) ? vehicleList.body : [];
+if (!vehicles.length) throw new Error('No vehicles seeded; cannot run the suite.');
+// Prefer a vehicle that seats at least one guest (all of them do here);
+// keep the first so pricing math below uses its real rates.
+const seedVehicle = vehicles[0];
+const SEED_VEHICLE = seedVehicle.id;
+const SEED_VEHICLE_HOUR = Number(seedVehicle.pricePerHour ?? 0);
+const SEED_VEHICLE_DAY = Number(seedVehicle.pricePerDay ?? 0);
 
 // ── Setup: users ─────────────────────────────────────────────
 // Registration is OTP-gated (no token until the email is verified), so
@@ -119,6 +154,20 @@ await expect('GET /guide/profile', 'GET', '/guide/profile', { token: G }, 200,
   (b) => (b.languages.join(',') === 'EN,FR' ? null : 'PATCH not persisted'));
 const guideId = profile.id;
 
+// ── Guide availability ───────────────────────────────────────
+// Bookings now enforce provider availability, so open the weekday of
+// tomorrow (the date this suite books) before creating any booking.
+const bookingDate = new Date(Date.now() + 86400000);
+const bookingWeekday = new Date(
+  `${bookingDate.toISOString().slice(0, 10)}T00:00:00Z`,
+).getUTCDay();
+await expect('guide opens the booking weekday', 'PUT', '/guide/availability/weekly', {
+  token: G, body: { weekday: bookingWeekday, startTime: '08:00', endTime: '18:00', capacity: 10 },
+}, 200);
+await expect('guide sets daily capacity', 'PUT', '/guide/availability/daily-capacity', {
+  token: G, body: { dailyCapacity: 10 },
+}, 200);
+
 // ── Guide vehicles ───────────────────────────────────────────
 console.log('\nGuide · vehicles');
 await expect('POST /guide/vehicles bogus id → 404', 'POST', '/guide/vehicles', {
@@ -151,7 +200,12 @@ await expect('GET /catalog/tour-types bogus region → empty', 'GET', '/catalog/
   (b) => (b.length === 0 ? null : 'expected empty'));
 await expect('GET /catalog/packages', 'GET', '/catalog/packages', {}, 200,
   (b) => (b.some((p) => p.id === SEED_PACKAGE) ? null : 'seed package missing'));
-await expect('GET /catalog/packages?search=musanze', 'GET', '/catalog/packages?search=musanze', {}, 200,
+// Search by a real word from the resolved seed package's name so the
+// assertion holds against any seeded catalog.
+const SEARCH_TERM = encodeURIComponent(
+  SEED_PACKAGE_NAME.split(' ').find((w) => w.length >= 3) ?? 'Tour',
+);
+await expect(`GET /catalog/packages?search=${SEARCH_TERM}`, 'GET', `/catalog/packages?search=${SEARCH_TERM}`, {}, 200,
   (b) => (b.length >= 1 ? null : 'search found nothing'));
 await expect('GET /catalog/packages?search=zzzz → empty', 'GET', '/catalog/packages?search=zzzznothing', {}, 200,
   (b) => (b.length === 0 ? null : 'expected empty'));
@@ -232,18 +286,20 @@ await expect('POST /bookings bogus guide → 404', 'POST', '/bookings', {
 await expect('POST /bookings bad paymentMethod → 400', 'POST', '/bookings', {
   token: T, body: { ...bookingBody, paymentMethod: 'GOLD' },
 }, 400);
-// Mirror the server's vehicle pricing (EV Car: $25/h, $200/day): full days
-// at the day rate, remainder hourly but never more than another day.
-const EV_HOUR = 25, EV_DAY = 200;
+// Mirror the server's vehicle pricing (src/booking/bookings.controller.ts
+// vehicleCost): full days at the day rate, remainder hourly but never more
+// than another day. Uses the resolved vehicle's real rates, not constants.
 const wantVehicleCost =
-  Math.floor(wantHours / 24) * EV_DAY +
-  Math.min((wantHours % 24) * EV_HOUR, EV_DAY);
-const wantTotal = wantPrice + wantVehicleCost;
+  Math.floor(wantHours / 24) * SEED_VEHICLE_DAY +
+  Math.min((wantHours % 24) * SEED_VEHICLE_HOUR, SEED_VEHICLE_DAY);
+const wantTotal = Math.round((wantPrice + wantVehicleCost) * 1e6) / 1e6;
 const b1 = await expect('POST /bookings computes totalDue server-side', 'POST', '/bookings', {
   token: T, body: bookingBody,
 }, 201, (b) => {
   if (b.status !== 'PENDING') return `status ${b.status}`;
-  if (Number(b.totalDue) !== wantTotal) return `totalDue ${b.totalDue} != ${wantTotal}`;
+  if (Math.round(Number(b.totalDue) * 1e6) / 1e6 !== wantTotal) {
+    return `totalDue ${b.totalDue} != ${wantTotal}`;
+  }
   if (b.paymentMethod !== 'WALLET') return 'paymentMethod lost';
   return null;
 });
