@@ -73,6 +73,11 @@ class UpdateHotelDto {
   @IsOptional()
   @IsString()
   website?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
 }
 
 class CreateRoomDto {
@@ -97,6 +102,11 @@ class CreateRoomDto {
   @IsOptional()
   @IsArray()
   amenities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
 }
 
 class UpdateRoomDto {
@@ -122,6 +132,11 @@ class UpdateRoomDto {
   @IsOptional()
   @IsArray()
   amenities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  imageUrls?: string[];
 }
 
 class UpdateBookingStatusDto {
@@ -198,6 +213,7 @@ export class HotelController {
         contact: dto.contact,
         phone: dto.phone,
         website: dto.website,
+        imageUrls: dto.imageUrls ?? [],
         code: await this.uniqueHotelCode(),
       },
       include: {
@@ -236,6 +252,7 @@ export class HotelController {
         contact: dto.contact,
         phone: dto.phone,
         website: dto.website,
+        imageUrls: dto.imageUrls,
       },
       include: {
         rooms: true,
@@ -272,6 +289,7 @@ export class HotelController {
         nightlyRateCents: dto.nightlyRateCents ?? 0,
         currency: dto.currency ?? 'USD',
         amenities: dto.amenities ?? [],
+        imageUrls: dto.imageUrls ?? [],
       },
       include: ROOM_INCLUDE,
     });
@@ -298,6 +316,7 @@ export class HotelController {
         nightlyRateCents: dto.nightlyRateCents,
         currency: dto.currency,
         amenities: dto.amenities,
+        imageUrls: dto.imageUrls,
       },
       include: ROOM_INCLUDE,
     });

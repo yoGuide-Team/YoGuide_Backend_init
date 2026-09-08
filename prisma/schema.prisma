@@ -725,6 +725,10 @@ model Hotel {
   contact      String?
   phone        String?
   website      String?
+  /// Cover/photo gallery for the hotel, shown on its public profile and
+  /// the Stays list. Managed by the hotel manager (see /hotel/profile);
+  /// URLs come from the /files upload flow or any hosted image URL.
+  imageUrls    String[]     @default([])
   isVerified   Boolean      @default(false)
   /// Short public code for the corporate-card payment flow
   /// (POST /payments/initiate) — distinct from the internal uuid id.
@@ -749,6 +753,8 @@ model HotelRoom {
   nightlyRateCents Int @default(0)
   currency     String  @default("USD")
   amenities    String[] @default([])
+  /// Photo gallery for this room type, shown on the hotel detail page.
+  imageUrls    String[] @default([])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

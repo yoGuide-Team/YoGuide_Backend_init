@@ -847,6 +847,11 @@ async function main() {
     },
   ];
 
+  // Deterministic themed photos for each hotel and room, derived from the
+  // spec (see the SCENE table at the top) so re-runs never change them.
+  const hotelSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const roomSlug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
   const hotelByCode: Record<string, string> = {};
   for (const h of hotelSpecs) {
     const manager = await ensureUser({
@@ -854,6 +859,8 @@ async function main() {
       fullName: h.managerName,
       role: 'HOTEL_MANAGER',
     });
+    const hotelSlugs = [`${hotelSlug(h.name)}-hotel`, `${hotelSlug(h.name)}-lobby`, `${hotelSlug(h.name)}-room`];
+    const hotelImages = hotelSlugs.map((s) => img(s));
     let hotel = await prisma.hotel.findFirst({ where: { managerId: manager.id } });
     if (!hotel) {
       hotel = await prisma.hotel.create({
@@ -869,6 +876,7 @@ async function main() {
           contact: h.managerEmail,
           phone: h.phone,
           website: h.website,
+          imageUrls: hotelImages,
           isVerified: true,
           code: h.code,
         },
@@ -884,6 +892,7 @@ async function main() {
           amenities: h.amenities,
           phone: h.phone,
           website: h.website,
+          imageUrls: hotelImages,
           isVerified: true,
           code: h.code,
         },
@@ -901,6 +910,7 @@ async function main() {
           nightlyRateCents: r.nightlyRateCents,
           currency: 'USD',
           amenities: r.amenities,
+          imageUrls: [img(`room-${roomSlug(r.name)}`), img(`room-${roomSlug(r.name)}-2`)],
         })),
       });
     }
@@ -916,6 +926,17 @@ async function main() {
     WHERE "nightlyRateCents" > 200;
   `);
   await prisma.hotel.updateMany({ where: { checkOutTime: '12:00' }, data: { checkOutTime: '11:00' } });
+
+  // Backfill photos on rooms created by earlier seed versions that predate
+  // the imageUrls column, so re-runs converge on the same visual result.
+  const unphotographed = await prisma.hotelRoom.findMany({ where: { imageUrls: { isEmpty: true } } });
+  for (const r of unphotographed) {
+    await prisma.hotelRoom.update({
+      where: { id: r.id },
+      data: { imageUrls: [img(`room-${roomSlug(r.name)}`), img(`room-${roomSlug(r.name)}-2`)] },
+    });
+  }
+  if (unphotographed.length) console.log(`  ✓ backfilled photos on ${unphotographed.length} pre-existing rooms`);
   console.log(`  ✓ ${hotelSpecs.length} hotels (managers + rooms)`);
 
   // --- 8. Extra tourist personas (for reviews & bookings) --------------
