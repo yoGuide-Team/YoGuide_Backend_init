@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PaymentsController } from './payments.controller';
+import { CheckoutController } from './checkout.controller';
 import { CardsController } from './cards.controller';
 import { BookingPaymentsController } from './booking-payments.controller';
 import { YoEcoPayClient } from './yoecopay.client';
@@ -17,6 +18,7 @@ import {
   imports: [ConfigModule],
   controllers: [
     PaymentsController,
+    CheckoutController,
     CardsController,
     BookingPaymentsController,
     PublicPayoutsController,

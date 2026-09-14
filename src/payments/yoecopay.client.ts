@@ -140,6 +140,52 @@ export class YoEcoPayClient {
     return { outcome: this.mapStatus(providerStatus, call.ok), providerStatus, call };
   }
 
+  /// ── Collections API ────────────────────────────────────────────────
+  ///
+  /// These three wrap the routes the worker actually implements today
+  /// (`/collections/*`, `/payouts/validate-account`). They exist so the
+  /// mobile and web apps never have to hold `X-App-Secret` themselves: the
+  /// app calls this backend, this backend calls the worker.
+  ///
+  /// They return the raw ProviderCallResult rather than a normalised
+  /// outcome — the controller passes the provider's own payload back to the
+  /// client, which is what the existing app UI already parses.
+
+  /// Validates a recipient's mobile-money account before anyone is charged.
+  async validatePayoutAccount(params: {
+    msisdn: string;
+    telecomProviderId: string;
+  }): Promise<ProviderCallResult> {
+    this.assertConfigured();
+    return this.request('POST', '/payouts/validate-account', params);
+  }
+
+  /// Starts a collection — a momo push or a card page — in one call.
+  async createCollection(params: {
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    amount: number;
+    customerRef: string;
+    pmethod: string;
+    recipientName: string;
+    recipientMsisdn: string;
+    recipientTelecomProviderId?: string | null;
+  }): Promise<ProviderCallResult> {
+    this.assertConfigured();
+    return this.request('POST', '/collections/create', params);
+  }
+
+  /// Authoritative read on a collection. The provider decides the outcome —
+  /// never the client.
+  async finalizeCollection(customerRef: string): Promise<ProviderCallResult> {
+    this.assertConfigured();
+    return this.request(
+      'POST',
+      `/collections/finalize/${encodeURIComponent(customerRef)}`,
+    );
+  }
+
   /// Maps the provider's vocabulary onto our own. Anything unrecognised is
   /// treated as still pending rather than as success — an unknown string
   /// must never confirm a booking.
